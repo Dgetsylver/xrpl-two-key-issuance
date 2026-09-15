@@ -1,0 +1,144 @@
+# xrpl-token
+
+A simple fungible token on the XRP Ledger, built on the native **MPToken**
+standard (not classic trust-line Issued Currencies). New supply is minted
+annually via a multisig-gated issuer account and sent to a multisig-gated
+governance account, which will later decide fund allocation.
+
+## Design summary
+
+- **Token standard**: XRPL native MPToken (`MPTokenIssuanceCreate` /
+  `MPTokenAuthorize` / `Payment`).
+- **Supply**: open-ended (no `MaximumAmount`), whole units only (`AssetScale`
+  omitted) — no decimals, no floating-point conversion anywhere.
+- **Issuance flags**: transferable, lockable (freeze), clawback-able. Not
+  allow-listed (`tfMPTRequireAuth` is not set) — any account can hold the
+  token once it self-authorizes.
+- **Issuer account** is a 2-of-3 multisig, established *before* the MPT
+  issuance is created and before its master key is disabled — so the
+  issuance itself, the annual mint, lock/unlock, and clawback are all
+  provably multisig-only actions from the start.
+- **Governance account** is likewise a 2-of-3 multisig with its master key
+  disabled, independent of whatever real-world governance process eventually
+  decides where funds go.
+- Both 2-of-3 signer sets are **placeholders** for local/Testnet development
+  — replace them with real keys before any production use.
+
+See `docker/rippled.cfg` and `src/lib/` for implementation details and
+inline rationale.
+
+## Prerequisites
+
+- Node.js 20+
+- Docker (this project was developed and tested against
+  [colima](https://github.com/abiosoft/colima); Docker Desktop should also
+  work)
+
+## Setup
+
+```sh
+npm install
+cp .env.example .env
+```
+
+Edit `.env` to set your token's identity (`TOKEN_TICKER`, `TOKEN_NAME`,
+etc.) and to select a network via `XRPL_NETWORK` (`local` or `testnet`).
+
+## Networks
+
+Switching networks is a single `.env` change:
+
+- **`XRPL_NETWORK=local`** (default) — a disposable, local, stand-alone
+  XRPL node running in Docker. No real money, no faucet rate limits, no
+  reliance on Testnet being up.
+- **`XRPL_NETWORK=testnet`** — the public XRPL Testnet, funded via the
+  public faucet.
+
+An optional `XRPL_WS_URL` overrides the WebSocket endpoint for either
+network.
+
+### Running the local network
+
+```sh
+npm run devnet:up    # starts a stand-alone rippled node + a ledger-advance sidecar
+npm run devnet:down  # stops and removes both
+```
+
+Stand-alone mode never closes ledgers on its own, so `devnet:up` also starts
+a small sidecar that calls the admin `ledger_accept` RPC every 500ms — without
+it, submitted transactions would never be confirmed.
+
+The local node's genesis account (address and secret are XRPL's
+well-known, publicly-documented stand-alone values — never use them for
+anything beyond local development) holds all XRP and is used to fund
+freshly-generated wallets directly, so no faucet is needed locally.
+
+## Usage
+
+With the local network running (`npm run devnet:up`) or `XRPL_NETWORK=testnet`
+set:
+
+```sh
+npm run setup:issuer                    # funds + configures the issuer, creates the MPT
+npm run setup:governance                # funds + configures governance, authorizes it to hold the MPT
+npm run mint -- <amount> [period]       # multisig-signed mint to governance (period defaults to the current year)
+npm run redistribute -- <address> <amount>  # multisig-signed Payment from governance to a recipient
+npm run status                          # prints issuance, balances, and signer list configuration
+```
+
+All state (generated addresses, signer seeds, the MPT issuance ID, and a
+record of which periods have already been minted) is persisted to
+`.deployment.json`, which is gitignored. Delete it (or specific fields
+within it) to redo a step from scratch.
+
+`mint` refuses to mint twice for the same period unless you pass `--force`,
+as a safety net against accidental double-issuance:
+
+```sh
+npm run mint -- 100000 2026          # first mint for 2026
+npm run mint -- 100000 2026          # refused: already minted for 2026
+npm run mint -- 100000 2026 --force  # explicit override, e.g. for a correction
+```
+
+## Testing
+
+```sh
+npm run test:integration
+```
+
+This runs the full Vitest suite, which spins up a fresh, disposable
+stand-alone rippled container per test file (via `testcontainers`) and
+exercises real transactions against it — no mocking of XRPL behavior. It
+covers:
+
+- MPT issuance creation (flags, whole-unit scale, no supply cap, metadata)
+- Multisig-gated minting, including insufficient-signature, disabled-master-
+  key, and unauthorized-destination failure cases
+- Governance setup and multisig redistribution
+- Issuer lock/unlock and clawback
+- Network-selection logic for both `local` and `testnet`
+
+```sh
+npm run typecheck
+```
+
+## Security notes
+
+- All signer seeds (issuer and governance) are sensitive secrets. They're
+  stored in `.deployment.json`, which is gitignored, but treat that file
+  with the same care as any private key material.
+- The issuer's and governance's 2-of-3 signer sets are **local/Testnet
+  placeholders**. Real signer accounts/keys must replace them before any
+  mainnet use. If a signer set is ever fully lost with no rotation path,
+  that account becomes permanently locked out of its own powers/funds.
+- Freeze and clawback are powerful, centralized controls, included
+  deliberately for this token. Document them clearly for any future holders
+  or auditors.
+- `SignerListSet` replaces an account's entire signer list; there's no
+  incremental add/remove. Rotating signers requires meeting the *current*
+  quorum to authorize the replacement list.
+- Ripple periodically resets XRPL Testnet entirely. A reset invalidates
+  `.deployment.json`; just rerun the setup scripts to redeploy.
+- The local stand-alone network's genesis secret is publicly known by
+  design (anyone can spin up their own local node) — never use it for
+  anything beyond local development funding.

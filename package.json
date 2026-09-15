@@ -1,0 +1,29 @@
+{
+  "name": "xrpl-token",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Simple XRPL fungible token (MPToken) with multisig-gated issuer and governance accounts.",
+  "type": "module",
+  "scripts": {
+    "devnet:up": "docker compose -f docker/docker-compose.yml up -d",
+    "devnet:down": "docker compose -f docker/docker-compose.yml down -v",
+    "setup:issuer": "tsx src/scripts/setup-issuer.ts",
+    "setup:governance": "tsx src/scripts/setup-governance.ts",
+    "mint": "tsx src/scripts/mint.ts",
+    "redistribute": "tsx src/scripts/redistribute.ts",
+    "status": "tsx src/scripts/status.ts",
+    "test:integration": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "xrpl": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "testcontainers": "^10.16.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

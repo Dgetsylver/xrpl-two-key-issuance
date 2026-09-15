@@ -1,0 +1,31 @@
+name: xrpl-token-local
+
+services:
+  rippled:
+    image: rippleci/rippled:latest
+    platform: linux/amd64
+    command: ["--standalone", "--start", "--conf", "/etc/opt/ripple/rippled.cfg"]
+    volumes:
+      - ./rippled.cfg:/etc/opt/ripple/rippled.cfg:ro
+    ports:
+      - "6006:6006" # WebSocket (admin) -- used by scripts/tests
+      - "5005:5005" # JSON-RPC (admin) -- used by the ledger-advance sidecar below
+    healthcheck:
+      # curl isn't present in this image; use rippled's own RPC client mode instead.
+      test: ["CMD", "rippled", "--conf", "/etc/opt/ripple/rippled.cfg", "server_info"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  # Stand-alone rippled never closes ledgers on its own. This sidecar calls
+  # the admin ledger_accept RPC on a short interval so transactions
+  # submitted by scripts/dev tools actually validate.
+  ledger-advance:
+    image: curlimages/curl:latest
+    depends_on:
+      rippled:
+        condition: service_healthy
+    entrypoint:
+      - sh
+      - -c
+      - "while true; do curl -s -o /dev/null -X POST http://rippled:5005 -d '{\"method\":\"ledger_accept\"}'; sleep 0.5; done"

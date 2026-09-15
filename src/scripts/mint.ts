@@ -1,0 +1,61 @@
+import { connectClient } from '../lib/client.js'
+import { submitMultisigned } from '../lib/multisig.js'
+import { assertTesSuccess } from '../lib/txResult.js'
+import { buildMptPaymentTx } from '../lib/mpt.js'
+import { loadDeploymentState, requireGovernance, requireIssuer, requireMptIssuanceId, saveDeploymentState } from '../lib/config.js'
+
+const MEMO_TYPE = 'mint-period'
+
+function parseArgs(argv: string[]): { amount: string; period: string; force: boolean } {
+  const positional = argv.filter((a) => !a.startsWith('--'))
+  const force = argv.includes('--force')
+  const amount = positional[0]
+  const period = positional[1] ?? String(new Date().getFullYear())
+
+  if (!amount || !/^\d+$/.test(amount)) {
+    throw new Error('Usage: npm run mint -- <amount> [period] [--force]\n  <amount> must be a whole non-negative integer (no decimals -- AssetScale is omitted for this token).')
+  }
+  return { amount, period, force }
+}
+
+async function main(): Promise<void> {
+  const { amount, period, force } = parseArgs(process.argv.slice(2))
+
+  const state = loadDeploymentState()
+  const issuer = requireIssuer(state)
+  const governance = requireGovernance(state)
+  const mptIssuanceId = requireMptIssuanceId(state)
+
+  const alreadyMinted = (state.mintedPeriods ?? []).includes(period)
+  if (alreadyMinted && !force) {
+    throw new Error(
+      `A mint for period "${period}" has already been recorded in .deployment.json. ` +
+        'If this is intentional (e.g. a correction), re-run with --force.',
+    )
+  }
+
+  const { client, network } = await connectClient()
+  try {
+    console.log(`Connected to ${network.name} (${network.wsUrl}).`)
+    console.log(`Minting ${amount} unit(s) for period "${period}" to governance account ${governance.address}...`)
+
+    const paymentTx = buildMptPaymentTx(issuer.address, governance.address, mptIssuanceId, amount, {
+      type: MEMO_TYPE,
+      data: period,
+    })
+    const result = await submitMultisigned(client, paymentTx, issuer.signers.slice(0, issuer.quorum))
+    assertTesSuccess(result, 'mint Payment')
+    console.log(`Mint succeeded (tx hash: ${result.result.hash}).`)
+
+    const mintedPeriods = [...(state.mintedPeriods ?? [])]
+    if (!alreadyMinted) mintedPeriods.push(period)
+    saveDeploymentState({ ...state, mintedPeriods })
+  } finally {
+    await client.disconnect()
+  }
+}
+
+main().catch((err) => {
+  console.error(err instanceof Error ? err.message : err)
+  process.exitCode = 1
+})
