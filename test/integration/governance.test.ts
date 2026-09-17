@@ -29,8 +29,7 @@ describe('governance', () => {
       expect(signerList.SignerEntries).toHaveLength(3)
 
       const accountInfo = await client.request({ command: 'account_info', account: governance.address })
-      const lsfDisableMaster = 0x00100000
-      expect((accountInfo.result.account_data.Flags ?? 0) & lsfDisableMaster).not.toBe(0)
+      expect(accountInfo.result.account_flags?.disableMasterKey).toBe(true)
 
       const mptObjects = await client.request({ command: 'account_objects', account: governance.address, type: 'mptoken' })
       expect(mptObjects.result.account_objects).toHaveLength(1)

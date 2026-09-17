@@ -17,9 +17,7 @@ async function printAccountStatus(client: Client, label: string, account: Accoun
   }
 
   const accountInfo = await client.request({ command: 'account_info', account: account.address })
-  const flags = accountInfo.result.account_data.Flags ?? 0
-  // lsfDisableMaster = 0x00100000
-  const masterKeyDisabled = (flags & 0x00100000) !== 0
+  const masterKeyDisabled = accountInfo.result.account_flags?.disableMasterKey ?? false
   console.log(`  Master key disabled: ${masterKeyDisabled}`)
 
   if (mptIssuanceId) {

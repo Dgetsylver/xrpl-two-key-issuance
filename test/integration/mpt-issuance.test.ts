@@ -42,8 +42,7 @@ describe('MPT issuance', () => {
       expect(decoded.name).toBe(env.TOKEN_NAME)
 
       const accountInfo = await client.request({ command: 'account_info', account: issuer.address })
-      const lsfDisableMaster = 0x00100000
-      expect((accountInfo.result.account_data.Flags ?? 0) & lsfDisableMaster).not.toBe(0)
+      expect(accountInfo.result.account_flags?.disableMasterKey).toBe(true)
     } finally {
       await client.disconnect()
     }
