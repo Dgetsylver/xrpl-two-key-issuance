@@ -5,8 +5,8 @@
   "description": "Simple XRPL fungible token (MPToken) with multisig-gated issuer and governance accounts.",
   "type": "module",
   "scripts": {
-    "devnet:up": "docker compose -f docker/docker-compose.yml up -d",
-    "devnet:down": "docker compose -f docker/docker-compose.yml down -v",
+    "devnet:up": "tsx devnet/cli.ts up",
+    "devnet:down": "tsx devnet/cli.ts down",
     "setup:issuer": "tsx src/scripts/setup-issuer.ts",
     "setup:governance": "tsx src/scripts/setup-governance.ts",
     "mint": "tsx src/scripts/mint.ts",

@@ -24,15 +24,19 @@ governance account, which will later decide fund allocation.
 - Both 2-of-3 signer sets are **placeholders** for local/Testnet development
   — replace them with real keys before any production use.
 
-See `docker/rippled.cfg` and `src/lib/` for implementation details and
-inline rationale.
+See `devnet/rippled.cfg` and `src/lib/` for implementation details and
+inline rationale. All local-network tooling (starting/stopping the
+stand-alone node, keeping its ledger advancing, the `devnet:up`/`devnet:down`
+CLI) lives under `devnet/`, separate from the token/XRPL application logic
+in `src/`.
 
 ## Prerequisites
 
 - Node.js 20+
-- Docker (this project was developed and tested against
-  [colima](https://github.com/abiosoft/colima); Docker Desktop should also
-  work)
+- Docker — only required for `XRPL_NETWORK=local` (this project was
+  developed and tested against [colima](https://github.com/abiosoft/colima);
+  Docker Desktop should also work). Skip it entirely by using
+  `XRPL_NETWORK=testnet` instead; see [Networks](#networks) below.
 
 ## Setup
 
@@ -50,9 +54,14 @@ Switching networks is a single `.env` change:
 
 - **`XRPL_NETWORK=local`** (default) — a disposable, local, stand-alone
   XRPL node running in Docker. No real money, no faucet rate limits, no
-  reliance on Testnet being up.
+  reliance on Testnet being up. **Requires Docker.**
 - **`XRPL_NETWORK=testnet`** — the public XRPL Testnet, funded via the
-  public faucet.
+  public faucet. **No Docker required** — this is the escape hatch if you
+  don't have (or don't want) a container runtime installed. Trade-offs:
+  faucet rate limits, real (if slow, ~4s) ledger close times instead of
+  instant on-demand ones, ledger state shared with the rest of the public
+  Testnet, and periodic full resets by Ripple (see
+  [Security notes](#security-notes)).
 
 An optional `XRPL_WS_URL` overrides the WebSocket endpoint for either
 network.
@@ -60,13 +69,17 @@ network.
 ### Running the local network
 
 ```sh
-npm run devnet:up    # starts a stand-alone rippled node + a ledger-advance sidecar
-npm run devnet:down  # stops and removes both
+npm run devnet:up    # starts a stand-alone rippled node + a background ledger-advance loop
+npm run devnet:down  # stops both
 ```
 
-Stand-alone mode never closes ledgers on its own, so `devnet:up` also starts
-a small sidecar that calls the admin `ledger_accept` RPC every 500ms — without
-it, submitted transactions would never be confirmed.
+Stand-alone mode never closes ledgers on its own, so `devnet:up` also spawns
+a small detached background process that calls the admin `ledger_accept` RPC
+every 500ms — without it, submitted transactions would never be confirmed.
+Both the container and the background process are tracked in `.devnet.json`
+(gitignored); `devnet:down` reads it to stop both and removes it. If you
+forget to run `devnet:down` (e.g. after killing the terminal), both will
+keep running until stopped manually.
 
 The local node's genesis account (address and secret are XRPL's
 well-known, publicly-documented stand-alone values — never use them for
