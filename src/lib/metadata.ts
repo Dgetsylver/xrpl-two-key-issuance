@@ -10,6 +10,7 @@ export interface TokenMetadataConfig {
   description?: string
   icon: string
   assetClass: string
+  assetSubclass: string
   issuerName: string
 }
 
@@ -18,6 +19,7 @@ export function readTokenMetadataConfig(env: NodeJS.ProcessEnv = process.env): T
   const name = env.TOKEN_NAME
   const icon = env.TOKEN_ICON_URL
   const assetClass = env.TOKEN_ASSET_CLASS
+  const assetSubclass = env.TOKEN_ASSET_SUBCLASS
   const issuerName = env.TOKEN_ISSUER_NAME
 
   const missing = Object.entries({ TOKEN_TICKER: ticker, TOKEN_NAME: name, TOKEN_ICON_URL: icon, TOKEN_ASSET_CLASS: assetClass, TOKEN_ISSUER_NAME: issuerName })
@@ -33,6 +35,7 @@ export function readTokenMetadataConfig(env: NodeJS.ProcessEnv = process.env): T
     description: env.TOKEN_DESCRIPTION,
     icon: icon as string,
     assetClass: assetClass as string,
+    assetSubclass: assetSubclass as string,
     issuerName: issuerName as string,
   }
 }
@@ -50,6 +53,7 @@ export function buildMptMetadataHex(config: TokenMetadataConfig): string {
     desc: config.description,
     icon: config.icon,
     asset_class: config.assetClass,
+    asset_subclass: config.assetSubclass,
     issuer_name: config.issuerName,
   })
 }
