@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+  integration:
+    name: Integration tests
+    # ubuntu-latest is linux/amd64 (matching the rippled image platform pinned
+    # in devnet/rippledNode.ts) and ships with a working Docker daemon, which
+    # testcontainers needs to spin up a stand-alone rippled node per test file.
+    runs-on: ubuntu-latest
+    # Each test file starts its own rippled container and the files run
+    # sequentially (fileParallelism: false), so the suite is slow by design.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # Pull ahead of time so a slow image pull can't eat into the 60s
+      # container startup timeout in devnet/rippledNode.ts.
+      - name: Pull rippled image
+        run: docker pull --platform linux/amd64 rippleci/rippled:latest
+
+      - run: npm run test:integration
