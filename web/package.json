@@ -11,7 +11,8 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "typecheck": "astro check"
+    "typecheck": "astro check",
+    "test": "vitest run"
   },
   "dependencies": {
     "astro": "^7.3.3",
@@ -21,6 +22,8 @@
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
     "@types/qrcode": "^1.5.6",
-    "typescript": "^5.7.2"
+    "jsdom": "^25.0.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
   }
 }
