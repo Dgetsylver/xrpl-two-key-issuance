@@ -96,7 +96,7 @@ import Layout from '../layouts/Layout.astro'
         } else if (outcome.status === 'handoff') {
           const message = buildHandoffMessage(preview, outcome.shareUrl)
           resultBody.innerHTML = `
-            <div class="status-message info">${preview.summary} Your signature was added, but quorum (${governance.quorum}) hasn't been met yet.</div>
+            <div class="status-message info">${preview.summary} ${outcome.quorumStatus}</div>
             <p>Relay this link to another governance signer:</p>
             <div class="field"><input readonly value="${message}" id="handoff-message" /></div>
             <button type="button" id="copy-handoff">Copy message</button>
