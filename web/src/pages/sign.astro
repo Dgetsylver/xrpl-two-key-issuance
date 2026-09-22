@@ -9,6 +9,8 @@ import Layout from '../layouts/Layout.astro'
     alone.
   </div>
 
+  <div id="page-error"></div>
+
   <section class="card" id="paste-card">
     <h2>Open a proposal</h2>
     <p style="font-family: system-ui, sans-serif; font-size: 0.85rem;">
@@ -29,9 +31,7 @@ import Layout from '../layouts/Layout.astro'
 
   <section class="card" id="sign-card" style="display:none;">
     <h2>Sign</h2>
-    <p id="connect-status">Not connected.</p>
-    <button id="connect-button" type="button">Connect with GhostSig</button>
-    <button id="sign-button" type="button" style="display:none; margin-left: 0.5rem;">Sign</button>
+    <button id="sign-button" type="button" style="display:none;">Sign</button>
     <div id="result-body" style="margin-top: 1rem;"></div>
   </section>
 </Layout>
@@ -39,11 +39,10 @@ import Layout from '../layouts/Layout.astro'
 <script>
   import { decode } from 'xrpl'
   import { loadPublicConfig, isIssuerSigner, isGovernanceSigner } from '../lib/config'
-  import { ghostsigConnect, GhostsigError } from '../lib/ghostsig'
+  import { onConnectionChange } from '../lib/connect'
   import { signCeremonyPayload, buildHandoffMessage } from '../lib/ceremony'
   import { describePaymentTx } from '../lib/preview'
   import { urlParamToBlob } from '../lib/blob'
-  import { getStoredAddress, setStoredAddress, clearStoredAddress } from '../lib/session'
   import QRCode from 'qrcode'
 
   function statusMessage(el: HTMLElement, kind: 'info' | 'success' | 'error', text: string) {
@@ -54,8 +53,7 @@ import Layout from '../layouts/Layout.astro'
   const previewCard = document.getElementById('preview-card')!
   const previewBody = document.getElementById('preview-body')!
   const signCard = document.getElementById('sign-card')!
-  const connectButton = document.getElementById('connect-button') as HTMLButtonElement
-  const connectStatus = document.getElementById('connect-status')!
+  const pageError = document.getElementById('page-error')!
   const signButton = document.getElementById('sign-button') as HTMLButtonElement
   const resultBody = document.getElementById('result-body')!
   const manualInput = document.getElementById('manual-input') as HTMLInputElement
@@ -70,6 +68,10 @@ import Layout from '../layouts/Layout.astro'
       return JSON.parse(trimmed) as Record<string, unknown>
     }
     return decode(trimmed) as unknown as Record<string, unknown>
+  }
+
+  function updateSignButtonVisibility() {
+    signButton.style.display = decodedTx && connectedAddress ? 'inline-block' : 'none'
   }
 
   async function main() {
@@ -88,6 +90,7 @@ import Layout from '../layouts/Layout.astro'
       `
       pasteCard.style.display = 'none'
       signCard.style.display = 'block'
+      updateSignButtonVisibility()
     }
 
     const params = new URLSearchParams(window.location.search)
@@ -111,44 +114,24 @@ import Layout from '../layouts/Layout.astro'
       }
     })
 
-    function onConnected(address: string) {
-      connectedAddress = address
-      setStoredAddress(address)
-      const recognized = isIssuerSigner(config, address) || isGovernanceSigner(config, address)
-      if (recognized) {
-        connectStatus.innerHTML = `Connected as <span class="mono address">${address}</span> — recognized signer. <button type="button" id="disconnect-button" style="background:none;border:none;color:inherit;text-decoration:underline;cursor:pointer;padding:0;font:inherit;">not you?</button>`
+    onConnectionChange((address) => {
+      connectedAddress = address ?? undefined
+      if (address) {
+        const recognized = isIssuerSigner(config, address) || isGovernanceSigner(config, address)
+        if (!recognized) {
+          statusMessage(
+            pageError,
+            'error',
+            `Connected as <span class="mono address">${address}</span> — not on either published signer list. GhostSig will refuse to sign unless this address is on the account's live SignerList.`,
+          )
+        } else {
+          pageError.innerHTML = ''
+        }
       } else {
-        statusMessage(
-          connectStatus,
-          'error',
-          `Connected as <span class="mono address">${address}</span> — not on either published signer list. GhostSig will refuse to sign unless this address is on the account's live SignerList.`,
-        )
+        pageError.innerHTML = ''
       }
-      document.getElementById('disconnect-button')?.addEventListener('click', () => {
-        clearStoredAddress()
-        window.location.reload()
-      })
-      connectButton.style.display = 'none'
-      signButton.style.display = 'inline-block'
-    }
-
-    connectButton.addEventListener('click', async () => {
-      connectButton.disabled = true
-      try {
-        const { address } = await ghostsigConnect()
-        onConnected(address)
-      } catch (err) {
-        const message = err instanceof GhostsigError ? err.message : err instanceof Error ? err.message : String(err)
-        statusMessage(connectStatus, 'error', message)
-      } finally {
-        connectButton.disabled = false
-      }
+      updateSignButtonVisibility()
     })
-
-    const storedAddress = getStoredAddress()
-    if (storedAddress) {
-      onConnected(storedAddress)
-    }
 
     signButton.addEventListener('click', async () => {
       if (!decodedTx || !connectedAddress) return

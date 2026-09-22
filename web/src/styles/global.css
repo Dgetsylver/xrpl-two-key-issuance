@@ -94,6 +94,8 @@ nav.site-nav {
   border-bottom: 1px solid var(--border);
   padding: 0.5rem 1rem;
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 1.25rem;
   font-family: system-ui, sans-serif;
   font-size: 0.9rem;
@@ -107,6 +109,30 @@ nav.site-nav a {
 
 nav.site-nav a:hover {
   color: var(--un-blue);
+}
+
+.nav-connect {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+  color: #5a5f63;
+}
+
+.nav-connect button {
+  padding: 0.35rem 0.8rem;
+  font-size: 0.85rem;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+  font: inherit;
 }
 
 main {
