@@ -1,0 +1,233 @@
+---
+import Layout from '../layouts/Layout.astro'
+---
+
+<Layout title="Dashboard">
+  <div class="inline-disclaimer">
+    This is a technical demonstration of the XRP Ledger's native MPToken standard (XLS-89) running on the public
+    <strong>XRPL Testnet</strong>. Nothing here has monetary value.
+  </div>
+
+  <section class="card" id="connect-card">
+    <h2>Your wallet</h2>
+    <p id="connect-status">Not connected.</p>
+    <button id="connect-button" type="button">Connect with GhostSig</button>
+    <div id="role-ctas" style="display:none; margin-top: 1rem;">
+      <a class="button secondary" id="propose-mint-cta" href="/propose-mint" style="display:none; margin-right: 0.5rem;">Propose a Mint</a>
+      <a class="button secondary" id="propose-disbursement-cta" href="/propose-disbursement" style="display:none;">Propose a Disbursement</a>
+    </div>
+    <div id="authorize-area" style="display:none; margin-top: 1rem;"></div>
+  </section>
+
+  <section class="card" id="stats-card">
+    <h2>Live status</h2>
+    <div class="stat-grid">
+      <div class="stat">
+        <div class="label">Outstanding supply</div>
+        <div class="value" id="stat-supply">—</div>
+      </div>
+      <div class="stat">
+        <div class="label">Your balance</div>
+        <div class="value" id="stat-balance">—</div>
+      </div>
+      <div class="stat">
+        <div class="label">Your XRP balance</div>
+        <div class="value" id="stat-xrp">—</div>
+      </div>
+    </div>
+    <p style="margin-top: 1rem; font-family: system-ui, sans-serif; font-size: 0.85rem;">
+      Issuer: <span id="issuer-address" class="mono address">—</span><br />
+      Governance: <span id="governance-address" class="mono address">—</span>
+    </p>
+  </section>
+
+  <section class="card" id="send-card" style="display:none;">
+    <h2>Send</h2>
+    <form id="send-form">
+      <div class="field">
+        <label for="send-destination">Destination address</label>
+        <input id="send-destination" name="destination" placeholder="r..." required />
+      </div>
+      <div class="field">
+        <label for="send-amount">Amount (Gton)</label>
+        <input id="send-amount" name="amount" placeholder="0" required />
+      </div>
+      <button type="submit">Send</button>
+    </form>
+    <div id="send-result"></div>
+  </section>
+
+  <section class="card">
+    <h2>What is this?</h2>
+    <p>
+      <strong>Carbon Coin (CRBN)</strong> is a native XRPL <strong>MPToken</strong> (XLS-89) — a first-class,
+      account-scoped fungible token type distinct from classic trust-line Issued Currencies. It is transferable,
+      lockable (freezable), and clawback-able, with no supply cap and whole-unit balances.
+    </p>
+    <p>
+      Minting new supply and moving funds out of governance both require a <strong>2-of-3 multisig</strong> quorum:
+      no single key can create new tokens or redirect governance's balance alone. Multisig members sign with their
+      own passkey-derived wallet via <a href="https://ghostsig.dev" target="_blank" rel="noopener noreferrer">GhostSig</a> —
+      no seed phrase is ever typed into this page, and nothing here can move funds on its own.
+    </p>
+    <p>
+      Ceremonies (a mint or a disbursement) are proposed and co-signed entirely in the browser: whoever proposes signs
+      first, then relays a link to the next signer (see <a href="/sign">Sign a Proposal</a>). Once enough signatures
+      are collected, GhostSig submits the transaction itself.
+    </p>
+    <p>
+      For background on how such a Carbon Coin could actually work and the
+      challenges faced by such a concept, see
+      <a
+        href="https://gist.github.com/chadoh/9386fa1c0db2b1c2268e9202d3ed7463#12-warpdotdev--design-brief-for-poc-engineering-v2-amended"
+        target="_blank"
+        rel="noopener noreferrer">Carbon Coin tokenomic design conversation</a
+      >.
+    </p>
+  </section>
+</Layout>
+
+<script>
+  import { loadPublicConfig, isIssuerSigner, isGovernanceSigner } from '../lib/config'
+  import { ghostsigConnect, ghostsigSign, GhostsigError } from '../lib/ghostsig'
+  import { buildMptAuthorizeTx, buildMptPaymentTx } from '../lib/tx'
+  import { getOutstandingSupplyRaw, getMptHolding, getXrpBalanceDrops, isAccountFunded, TESTNET_EXPLORER_BASE } from '../lib/xrplClient'
+  import { toGton, fromGton } from '../lib/gton'
+
+  let connectedAddress: string | undefined
+
+  const connectButton = document.getElementById('connect-button') as HTMLButtonElement
+  const connectStatus = document.getElementById('connect-status')!
+  const roleCtas = document.getElementById('role-ctas')!
+  const proposeMintCta = document.getElementById('propose-mint-cta') as HTMLAnchorElement
+  const proposeDisbursementCta = document.getElementById('propose-disbursement-cta') as HTMLAnchorElement
+  const authorizeArea = document.getElementById('authorize-area')!
+  const sendCard = document.getElementById('send-card')!
+  const sendForm = document.getElementById('send-form') as HTMLFormElement
+  const sendResult = document.getElementById('send-result')!
+
+  function statusMessage(el: HTMLElement, kind: 'info' | 'success' | 'error', text: string) {
+    el.innerHTML = `<div class="status-message ${kind}">${text}</div>`
+  }
+
+  async function refreshStats(mptIssuanceId?: string) {
+    if (!mptIssuanceId) return
+    try {
+      const supplyRaw = await getOutstandingSupplyRaw(mptIssuanceId)
+      document.getElementById('stat-supply')!.textContent = `${toGton(supplyRaw)} Gton`
+    } catch {
+      document.getElementById('stat-supply')!.textContent = 'unavailable'
+    }
+    if (connectedAddress) {
+      const holding = await getMptHolding(connectedAddress, mptIssuanceId)
+      document.getElementById('stat-balance')!.textContent = holding.authorized ? `${toGton(holding.balanceRaw)} Gton` : 'not authorized'
+      const drops = await getXrpBalanceDrops(connectedAddress)
+      document.getElementById('stat-xrp')!.textContent = drops ? `${(Number(drops) / 1_000_000).toLocaleString()} XRP` : 'unfunded'
+    }
+  }
+
+  async function ensureAuthorized(mptIssuanceId: string) {
+    if (!connectedAddress) return
+    const funded = await isAccountFunded(connectedAddress)
+    if (!funded) {
+      authorizeArea.style.display = 'block'
+      statusMessage(
+        authorizeArea,
+        'info',
+        `Your address isn't funded on Testnet yet. Open GhostSig's wallet UI and use its built-in testnet faucet, then reload this page.`,
+      )
+      return
+    }
+    const holding = await getMptHolding(connectedAddress, mptIssuanceId)
+    if (holding.authorized) {
+      authorizeArea.style.display = 'none'
+      sendCard.style.display = 'block'
+      return
+    }
+    authorizeArea.style.display = 'block'
+    authorizeArea.innerHTML = ''
+    const button = document.createElement('button')
+    button.textContent = 'Self-authorize to hold CRBN'
+    button.addEventListener('click', async () => {
+      button.disabled = true
+      try {
+        const tx = buildMptAuthorizeTx(connectedAddress!, mptIssuanceId)
+        const result = await ghostsigSign({ payload: tx as unknown as Record<string, unknown>, address: connectedAddress!, submit: true })
+        statusMessage(authorizeArea, 'success', `Authorized! (tx <a href="${TESTNET_EXPLORER_BASE}/transactions/${result.hash}" target="_blank" rel="noopener noreferrer">${result.hash}</a>)`)
+        sendCard.style.display = 'block'
+        await refreshStats(mptIssuanceId)
+      } catch (err) {
+        const message = err instanceof GhostsigError ? err.message : err instanceof Error ? err.message : String(err)
+        statusMessage(authorizeArea, 'error', message)
+        button.disabled = false
+      }
+    })
+    authorizeArea.appendChild(button)
+  }
+
+  async function main() {
+    const config = await loadPublicConfig()
+    document.getElementById('issuer-address')!.textContent = config.issuer?.address ?? '(not deployed yet)'
+    document.getElementById('governance-address')!.textContent = config.governance?.address ?? '(not deployed yet)'
+    if (config.issuer) {
+      const el = document.getElementById('issuer-address')!
+      el.innerHTML = `<a href="${TESTNET_EXPLORER_BASE}/accounts/${config.issuer.address}" target="_blank" rel="noopener noreferrer">${config.issuer.address}</a>`
+    }
+    if (config.governance) {
+      const el = document.getElementById('governance-address')!
+      el.innerHTML = `<a href="${TESTNET_EXPLORER_BASE}/accounts/${config.governance.address}" target="_blank" rel="noopener noreferrer">${config.governance.address}</a>`
+    }
+
+    await refreshStats(config.mptIssuanceId)
+
+    connectButton.addEventListener('click', async () => {
+      connectButton.disabled = true
+      try {
+        const { address } = await ghostsigConnect()
+        connectedAddress = address
+        const roles: string[] = []
+        if (isIssuerSigner(config, address)) roles.push('Mint Signer')
+        if (isGovernanceSigner(config, address)) roles.push('Governance Signer')
+        const greeting = roles.length > 0 ? `Welcome, ${roles.join(' & ')}!` : 'Connected.'
+        connectStatus.innerHTML = `${greeting} <span class="mono address">${address}</span>`
+        roleCtas.style.display = 'block'
+        proposeMintCta.style.display = isIssuerSigner(config, address) ? 'inline-block' : 'none'
+        proposeDisbursementCta.style.display = isGovernanceSigner(config, address) ? 'inline-block' : 'none'
+        if (config.mptIssuanceId) {
+          await ensureAuthorized(config.mptIssuanceId)
+          await refreshStats(config.mptIssuanceId)
+        }
+      } catch (err) {
+        const message = err instanceof GhostsigError ? err.message : err instanceof Error ? err.message : String(err)
+        statusMessage(connectStatus, 'error', message)
+      } finally {
+        connectButton.disabled = false
+      }
+    })
+
+    sendForm.addEventListener('submit', async (event) => {
+      event.preventDefault()
+      if (!connectedAddress || !config.mptIssuanceId) return
+      const formData = new FormData(sendForm)
+      const destination = String(formData.get('destination') ?? '').trim()
+      const amountInput = String(formData.get('amount') ?? '').trim()
+      try {
+        const amountRaw = fromGton(amountInput)
+        const tx = buildMptPaymentTx(connectedAddress, destination, config.mptIssuanceId, amountRaw)
+        const submitButton = sendForm.querySelector('button[type="submit"]') as HTMLButtonElement
+        submitButton.disabled = true
+        const result = await ghostsigSign({ payload: tx as unknown as Record<string, unknown>, address: connectedAddress, submit: true })
+        statusMessage(sendResult, 'success', `Sent! (tx <a href="${TESTNET_EXPLORER_BASE}/transactions/${result.hash}" target="_blank" rel="noopener noreferrer">${result.hash}</a>)`)
+        submitButton.disabled = false
+        await refreshStats(config.mptIssuanceId)
+      } catch (err) {
+        const message = err instanceof GhostsigError ? err.message : err instanceof Error ? err.message : String(err)
+        statusMessage(sendResult, 'error', message)
+      }
+    })
+  }
+
+  main().catch((err) => {
+    statusMessage(connectStatus, 'error', err instanceof Error ? err.message : String(err))
+  })
+</script>

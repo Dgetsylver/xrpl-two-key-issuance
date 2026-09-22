@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
-    include: ['test/integration/**/*.test.ts'],
+    include: ['test/integration/**/*.test.ts', 'test/unit/**/*.test.ts'],
     env: {
       // testcontainers' Ryuk reaper container tries to bind-mount the Docker
       // socket for cleanup; colima's Lima VM doesn't support that bind mount

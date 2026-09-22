@@ -4,6 +4,9 @@
   "private": true,
   "description": "Simple XRPL fungible token (MPToken) with multisig-gated issuer and governance accounts.",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "devnet:up": "tsx devnet/cli.ts up",
     "devnet:down": "tsx devnet/cli.ts down",
@@ -12,8 +15,12 @@
     "mint": "tsx src/scripts/mint.ts",
     "redistribute": "tsx src/scripts/redistribute.ts",
     "status": "tsx src/scripts/status.ts",
+    "web:sync-config": "tsx src/scripts/sync-public-config.ts",
+    "web:dev": "npm --prefix web run dev",
+    "web:build": "npm --prefix web run build",
+    "web:typecheck": "npm --prefix web run typecheck",
     "test:integration": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && npm run web:typecheck"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
