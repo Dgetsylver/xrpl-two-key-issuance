@@ -34,7 +34,7 @@ in `src/`.
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 22+ (required by Astro, used for the web frontend)
 - Docker — only required for `XRPL_NETWORK=local` (this project was
   developed and tested against [colima](https://github.com/abiosoft/colima);
   Docker Desktop should also work). Skip it entirely by using

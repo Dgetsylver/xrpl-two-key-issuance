@@ -4,6 +4,9 @@
   "private": true,
   "description": "Static, frontend-only Astro site for the Carbon Coin MPToken demo, signed via GhostSig (ghostsig.dev) in the browser -- no server, no secrets.",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
