@@ -1,0 +1,10 @@
+{
+  "network": "testnet",
+  "token": {
+    "ticker": "CRBN",
+    "name": "Carbon Coin",
+    "description": "Aligning Long-Term Wealth with Planetary Decarbonization",
+    "icon": "https://example.org/token-icon.png",
+    "issuerName": "UN Ministry For The Future"
+  }
+}

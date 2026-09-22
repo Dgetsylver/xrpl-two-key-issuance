@@ -1,0 +1,54 @@
+---
+import '../styles/global.css'
+
+interface Props {
+  title: string
+}
+
+const { title } = Astro.props
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title} · Carbon Coin (testnet demo)</title>
+    <meta
+      name="description"
+      content="Carbon Coin (CRBN): a testnet-only technical demo of the XRP Ledger's native MPToken standard. Not a real financial instrument, not affiliated with the United Nations."
+    />
+  </head>
+  <body>
+    <div class="disclaimer-banner">
+      <strong>Testnet demo only.</strong> Carbon Coin (CRBN) has no monetary value and is <strong>not affiliated with, endorsed by, or produced by the United Nations</strong>.
+      It exists solely to demonstrate XRPL's native MPToken (XLS-89) token design space.
+    </div>
+    <header class="site-header">
+      <div class="emblem" aria-hidden="true">🌍</div>
+      <div class="site-title">
+        <h1>Carbon Coin</h1>
+        <p>Aligning Long-Term Wealth with Planetary Decarbonization — a fictional demo by the "UN Ministry For The Future"</p>
+      </div>
+    </header>
+    <nav class="site-nav">
+      <a href="/">Dashboard</a>
+      <a href="/propose-mint">Propose a Mint</a>
+      <a href="/propose-disbursement">Propose a Disbursement</a>
+      <a href="/sign">Sign a Proposal</a>
+    </nav>
+    <main>
+      <slot />
+    </main>
+    <footer class="site-footer">
+      <p>
+        Testnet-only technical demonstration of XRPL's native MPToken standard (XLS-89). No real money, no real carbon
+        credits, no monetary value. "Carbon Coin", "UN Ministry For The Future", and all associated names are
+        fictional and used solely for illustrative purposes — <strong>this project is not affiliated with, endorsed
+        by, or produced by the United Nations</strong> or any of its agencies.
+      </p>
+      <p>Signed entirely in your browser via <a href="https://ghostsig.dev" target="_blank" rel="noopener noreferrer">GhostSig</a>. No server, no seeds, no custodial wallet.</p>
+    </footer>
+  </body>
+</html>

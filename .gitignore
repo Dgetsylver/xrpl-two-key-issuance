@@ -5,3 +5,4 @@ dist/
 .devnet.json
 *.log
 .DS_Store
+web/.astro/

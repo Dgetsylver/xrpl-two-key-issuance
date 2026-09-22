@@ -2,7 +2,6 @@ import { Client, Wallet } from 'xrpl'
 import { connectClient } from '../../src/lib/client.js'
 import { fundNewWallet, fundSignerWallets } from '../../src/lib/fund.js'
 import { establishMultisigAndDisableMasterKey } from '../../src/lib/accountSetup.js'
-import { submitMultisigned } from '../../src/lib/multisig.js'
 import { assertTesSuccess } from '../../src/lib/txResult.js'
 import { buildMptAuthorizeTx, buildMptIssuanceCreateTx } from '../../src/lib/mpt.js'
 import { buildMptMetadataHex, readTokenMetadataConfig } from '../../src/lib/metadata.js'
@@ -30,35 +29,38 @@ async function toAccountState(wallet: Wallet, signers: AccountState['signers'], 
 }
 
 /**
- * Funds and fully configures an issuer account (multisig + disabled master
- * key) and creates the MPT issuance, exactly like `setup-issuer.ts`.
+ * Funds and fully configures an issuer account (single-sig issuance, then
+ * multisig + disabled master key) exactly like `setup-issuer.ts`.
  */
 export async function setupIssuer(client: Client, network: NetworkConfig, env: NodeJS.ProcessEnv): Promise<{ issuer: AccountState; mptIssuanceId: string }> {
   const issuerWallet = await fundNewWallet(client, network)
   const signers = await fundSignerWallets(client, network, SIGNER_COUNT)
-  await establishMultisigAndDisableMasterKey(client, issuerWallet, signers, SIGNER_QUORUM)
 
   const metadataHex = buildMptMetadataHex(readTokenMetadataConfig(env))
-  const issuanceResult = await submitMultisigned(client, buildMptIssuanceCreateTx(issuerWallet.address, metadataHex), signers.slice(0, SIGNER_QUORUM))
+  const issuanceTx = await client.autofill(buildMptIssuanceCreateTx(issuerWallet.address, metadataHex))
+  const issuanceResult = await client.submitAndWait(issuerWallet.sign(issuanceTx).tx_blob)
   assertTesSuccess(issuanceResult, 'MPTokenIssuanceCreate')
   const mptIssuanceId = (issuanceResult.result.meta as { mpt_issuance_id?: string }).mpt_issuance_id
   if (!mptIssuanceId) throw new Error('MPTokenIssuanceCreate did not return mpt_issuance_id')
+
+  await establishMultisigAndDisableMasterKey(client, issuerWallet, signers, SIGNER_QUORUM)
 
   return { issuer: await toAccountState(issuerWallet, signers, SIGNER_QUORUM), mptIssuanceId }
 }
 
 /**
- * Funds and fully configures a governance account (multisig + disabled
- * master key) and authorizes it to hold the given MPT issuance, exactly
- * like `setup-governance.ts`.
+ * Funds and fully configures a governance account (single-sig authorize,
+ * then multisig + disabled master key) exactly like `setup-governance.ts`.
  */
 export async function setupGovernance(client: Client, network: NetworkConfig, mptIssuanceId: string): Promise<AccountState> {
   const governanceWallet = await fundNewWallet(client, network)
   const signers = await fundSignerWallets(client, network, SIGNER_COUNT)
-  await establishMultisigAndDisableMasterKey(client, governanceWallet, signers, SIGNER_QUORUM)
 
-  const authorizeResult = await submitMultisigned(client, buildMptAuthorizeTx(governanceWallet.address, mptIssuanceId), signers.slice(0, SIGNER_QUORUM))
+  const authorizeTx = await client.autofill(buildMptAuthorizeTx(governanceWallet.address, mptIssuanceId))
+  const authorizeResult = await client.submitAndWait(governanceWallet.sign(authorizeTx).tx_blob)
   assertTesSuccess(authorizeResult, 'MPTokenAuthorize')
+
+  await establishMultisigAndDisableMasterKey(client, governanceWallet, signers, SIGNER_QUORUM)
 
   return toAccountState(governanceWallet, signers, SIGNER_QUORUM)
 }

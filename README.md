@@ -14,13 +14,15 @@ governance account, which will later decide fund allocation.
 - **Issuance flags**: transferable, lockable (freeze), clawback-able. Not
   allow-listed (`tfMPTRequireAuth` is not set) — any account can hold the
   token once it self-authorizes.
-- **Issuer account** is a 2-of-3 multisig, established *before* the MPT
-  issuance is created and before its master key is disabled — so the
-  issuance itself, the annual mint, lock/unlock, and clawback are all
-  provably multisig-only actions from the start.
-- **Governance account** is likewise a 2-of-3 multisig with its master key
-  disabled, independent of whatever real-world governance process eventually
-  decides where funds go.
+- **Issuer account**: the MPT issuance itself is a single-sig bootstrap
+  action, signed with the account's still-active throwaway master key. The
+  account is then established as a 2-of-3 multisig and its master key is
+  disabled immediately after — so from that point on, the annual mint,
+  lock/unlock, and clawback are all provably multisig-only actions.
+- **Governance account** likewise self-authorizes to hold the MPT as a
+  single-sig bootstrap action before its master key is disabled; from then
+  on it's a 2-of-3 multisig, independent of whatever real-world governance
+  process eventually decides where funds go.
 - Both 2-of-3 signer sets are **placeholders** for local/Testnet development
   — replace them with real keys before any production use.
 
@@ -134,6 +136,34 @@ covers:
 ```sh
 npm run typecheck
 ```
+
+## Web frontend
+
+`web/` is a static, frontend-only Astro site that lets issuer/governance
+multisig members run real, [GhostSig](https://ghostsig.dev)-signed minting
+and redistribution ceremonies directly from a browser — no server, no
+seeds held anywhere. General visitors can connect, self-authorize, view live
+stats, and send Gton they already hold.
+
+GhostSig only understands XRPL `testnet`/`devnet`/`mainnet`, so the web demo
+always targets **XRPL Testnet**, regardless of the CLI's `XRPL_NETWORK`
+setting. For "my address is a signer" to ever be true in the browser, the
+issuer/governance signer lists need at least one real, externally-supplied
+address (e.g. your own GhostSig address) — see `ISSUER_SIGNER_ADDRESSES` /
+`GOVERNANCE_SIGNER_ADDRESSES` in `.env.example`.
+
+```sh
+npm run setup:issuer      # with XRPL_NETWORK=testnet and ISSUER_SIGNER_ADDRESSES set
+npm run setup:governance  # likewise, with GOVERNANCE_SIGNER_ADDRESSES set
+npm run web:sync-config   # regenerates web/public/deployment.json (addresses only, never seeds)
+npm run web:dev           # or web:build / web:typecheck
+```
+
+`web/public/deployment.json` is a committed, regenerate-on-demand static
+asset containing only non-secret fields (addresses, quorum, token identity)
+— `sync-public-config.ts` refuses to write anything containing a `seed` key.
+See `web/src/lib/ghostsig.ts` for the vendored GHOSTSIG popup protocol client
+(adapted from `ghostsig/sdk/popup.ts`) that the site signs everything through.
 
 ## Security notes
 

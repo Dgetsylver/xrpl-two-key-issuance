@@ -1,7 +1,6 @@
 import { connectClient } from '../lib/client.js'
-import { fundNewWallet, fundSignerWallets } from '../lib/fund.js'
+import { fundNewWallet, parseSignerAddressesEnv, resolveSignerWallets } from '../lib/fund.js'
 import { establishMultisigAndDisableMasterKey } from '../lib/accountSetup.js'
-import { submitMultisigned } from '../lib/multisig.js'
 import { assertTesSuccess } from '../lib/txResult.js'
 import { buildMptIssuanceCreateTx } from '../lib/mpt.js'
 import { buildMptMetadataHex, readTokenMetadataConfig } from '../lib/metadata.js'
@@ -25,21 +24,32 @@ async function main(): Promise<void> {
     const issuer = await fundNewWallet(client, network)
     console.log(`Funded issuer account: ${issuer.address}`)
 
-    const signers = await fundSignerWallets(client, network, SIGNER_COUNT)
-    console.log(`Funded ${signers.length} placeholder issuer signer wallets: ${signers.map((s) => s.address).join(', ')}`)
+    // Optional, additive: real (e.g. GhostSig-controlled) signer addresses
+    // supplied via ISSUER_SIGNER_ADDRESSES are used as-is; any remaining
+    // slots up to SIGNER_COUNT are still auto-generated placeholders exactly
+    // as before. Leaving the var unset reproduces today's behavior.
+    const presetSignerAddresses = parseSignerAddressesEnv(process.env.ISSUER_SIGNER_ADDRESSES)
+    const signers = await resolveSignerWallets(client, network, SIGNER_COUNT, presetSignerAddresses)
+    console.log(`Issuer signer set (${signers.length}): ${signers.map((s) => s.address).join(', ')}`)
 
-    await establishMultisigAndDisableMasterKey(client, issuer, signers, SIGNER_QUORUM)
-    console.log(`Configured ${SIGNER_QUORUM}-of-${SIGNER_COUNT} multisig and disabled the issuer's master key.`)
-
+    // The one-time MPTokenIssuanceCreate is signed single-sig, with the
+    // issuer's still-active throwaway master key, *before* the multisig is
+    // established below. Otherwise, whenever a real signer is a
+    // GhostSig-controlled human rather than a script-held seed, this
+    // one-time bootstrap action would itself need a live, multi-person
+    // browser ceremony just to get the token issued.
     const metadataHex = buildMptMetadataHex(readTokenMetadataConfig())
-    const issuanceTx = buildMptIssuanceCreateTx(issuer.address, metadataHex)
-    const issuanceResult = await submitMultisigned(client, issuanceTx, signers.slice(0, SIGNER_QUORUM))
+    const issuanceTx = await client.autofill(buildMptIssuanceCreateTx(issuer.address, metadataHex))
+    const issuanceResult = await client.submitAndWait(issuer.sign(issuanceTx).tx_blob)
     assertTesSuccess(issuanceResult, 'MPTokenIssuanceCreate')
     const mptIssuanceId = (issuanceResult.result.meta as { mpt_issuance_id?: string }).mpt_issuance_id
     if (!mptIssuanceId) {
       throw new Error('MPTokenIssuanceCreate succeeded but no mpt_issuance_id was returned.')
     }
     console.log(`Created MPT issuance: ${mptIssuanceId}`)
+
+    await establishMultisigAndDisableMasterKey(client, issuer, signers, SIGNER_QUORUM)
+    console.log(`Configured ${SIGNER_QUORUM}-of-${signers.length} multisig and disabled the issuer's master key.`)
 
     saveDeploymentState({
       ...state,

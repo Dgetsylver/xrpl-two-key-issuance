@@ -1,7 +1,6 @@
 import { connectClient } from '../lib/client.js'
-import { fundNewWallet, fundSignerWallets } from '../lib/fund.js'
+import { fundNewWallet, parseSignerAddressesEnv, resolveSignerWallets } from '../lib/fund.js'
 import { establishMultisigAndDisableMasterKey } from '../lib/accountSetup.js'
-import { submitMultisigned } from '../lib/multisig.js'
 import { assertTesSuccess } from '../lib/txResult.js'
 import { buildMptAuthorizeTx } from '../lib/mpt.js'
 import { loadDeploymentState, requireMptIssuanceId, saveDeploymentState } from '../lib/config.js'
@@ -25,16 +24,24 @@ async function main(): Promise<void> {
     const governance = await fundNewWallet(client, network)
     console.log(`Funded governance account: ${governance.address}`)
 
-    const signers = await fundSignerWallets(client, network, SIGNER_COUNT)
-    console.log(`Funded ${signers.length} placeholder governance signer wallets: ${signers.map((s) => s.address).join(', ')}`)
+    // Optional, additive: real (e.g. GhostSig-controlled) signer addresses
+    // supplied via GOVERNANCE_SIGNER_ADDRESSES are used as-is; any remaining
+    // slots up to SIGNER_COUNT are still auto-generated placeholders exactly
+    // as before. Leaving the var unset reproduces today's behavior.
+    const presetSignerAddresses = parseSignerAddressesEnv(process.env.GOVERNANCE_SIGNER_ADDRESSES)
+    const signers = await resolveSignerWallets(client, network, SIGNER_COUNT, presetSignerAddresses)
+    console.log(`Governance signer set (${signers.length}): ${signers.map((s) => s.address).join(', ')}`)
 
-    await establishMultisigAndDisableMasterKey(client, governance, signers, SIGNER_QUORUM)
-    console.log(`Configured ${SIGNER_QUORUM}-of-${SIGNER_COUNT} multisig and disabled the governance account's master key.`)
-
-    const authorizeTx = buildMptAuthorizeTx(governance.address, mptIssuanceId)
-    const authorizeResult = await submitMultisigned(client, authorizeTx, signers.slice(0, SIGNER_QUORUM))
+    // Same bootstrap-ordering rationale as setup-issuer.ts: the one-time
+    // MPTokenAuthorize is signed single-sig, with the still-active throwaway
+    // master key, *before* the multisig is established below.
+    const authorizeTx = await client.autofill(buildMptAuthorizeTx(governance.address, mptIssuanceId))
+    const authorizeResult = await client.submitAndWait(governance.sign(authorizeTx).tx_blob)
     assertTesSuccess(authorizeResult, 'MPTokenAuthorize')
     console.log('Governance account authorized to hold the MPT.')
+
+    await establishMultisigAndDisableMasterKey(client, governance, signers, SIGNER_QUORUM)
+    console.log(`Configured ${SIGNER_QUORUM}-of-${signers.length} multisig and disabled the governance account's master key.`)
 
     saveDeploymentState({
       ...state,
