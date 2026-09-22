@@ -1,5 +1,6 @@
 import { GhostsigError, ghostsigSign } from './ghostsig'
 import { blobToUrlParam } from './blob'
+import { absoluteUrlWithBase } from './paths'
 import type { PaymentPreview } from './preview'
 
 export type CeremonyOutcome =
@@ -18,7 +19,7 @@ export async function signCeremonyPayload(payload: Record<string, unknown>, addr
   try {
     const result = await ghostsigSign({ payload, address, submit: true })
     if (result.handOver) {
-      const shareUrl = `${window.location.origin}/sign?b=${blobToUrlParam(result.handOver)}`
+      const shareUrl = `${absoluteUrlWithBase('/sign')}?b=${blobToUrlParam(result.handOver)}`
       return { status: 'handoff', shareUrl, blob: result.handOver, address: result.address }
     }
     return { status: 'submitted', hash: result.hash, address: result.address }

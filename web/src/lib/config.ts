@@ -1,5 +1,7 @@
 // Mirrors the (non-secret) shape written by `src/scripts/sync-public-config.ts`.
 
+import { withBase } from './paths'
+
 export interface PublicSignerConfig {
   address: string
 }
@@ -28,12 +30,13 @@ export interface PublicDeploymentConfig {
 
 let cachedConfig: Promise<PublicDeploymentConfig> | undefined
 
-/** Fetches (and caches for the lifetime of the page) `/deployment.json`. */
+/** Fetches (and caches for the lifetime of the page) `deployment.json`. */
 export function loadPublicConfig(): Promise<PublicDeploymentConfig> {
   if (!cachedConfig) {
-    cachedConfig = fetch('/deployment.json', { cache: 'no-store' }).then(async (res) => {
+    const url = withBase('/deployment.json')
+    cachedConfig = fetch(url, { cache: 'no-store' }).then(async (res) => {
       if (!res.ok) {
-        throw new Error(`Failed to load /deployment.json (HTTP ${res.status}). Has \`npm run web:sync-config\` been run?`)
+        throw new Error(`Failed to load ${url} (HTTP ${res.status}). Has \`npm run web:sync-config\` been run?`)
       }
       return (await res.json()) as PublicDeploymentConfig
     })
