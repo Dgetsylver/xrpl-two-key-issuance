@@ -72,6 +72,19 @@ export async function isAccountFunded(address: string): Promise<boolean> {
   return (await getXrpBalanceDrops(address)) !== undefined
 }
 
+/**
+ * The account's current `Sequence`. GHOSTSIG refuses to autofill `Sequence`
+ * for any multisig-shaped payload (an empty `SigningPubKey`/a `Signers`
+ * array) -- "a multi-signed transaction is fixed by its first signer" --
+ * even when it's this wallet's own account, so a ceremony proposal must
+ * fetch and set it explicitly before ever calling GHOSTSIG.
+ */
+export async function getAccountSequence(address: string): Promise<number> {
+  const client = await getClient()
+  const res = await client.request({ command: 'account_info', account: address })
+  return res.result.account_data.Sequence
+}
+
 /** The current network reference (base) transaction cost, in drops. */
 export async function getBaseFeeDrops(): Promise<bigint> {
   const client = await getClient()
