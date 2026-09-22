@@ -1,10 +1,41 @@
 {
   "network": "testnet",
+  "mptIssuanceId": "013FF064D26B0039BF8C5440F2F6A96AD315F996B25EF837",
   "token": {
     "ticker": "CRBN",
     "name": "Carbon Coin",
     "description": "Aligning Long-Term Wealth with Planetary Decarbonization",
-    "icon": "https://example.org/token-icon.png",
+    "icon": "data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22><circle cx=%2232%22 cy=%2232%22 r=%2230%22 fill=%22#0b2e4f%22 stroke=%22#c9a34c%22 stroke-width=%224%22 /><text x=%2232%22 y=%2242%22 font-size=%2232%22 text-anchor=%22middle%22>🌍</text></svg>",
     "issuerName": "UN Ministry For The Future"
+  },
+  "issuer": {
+    "address": "rLBbnqV3WCc2C28zhG8BdEr4TRJK8bgARY",
+    "quorum": 2,
+    "signers": [
+      {
+        "address": "rN3PpXKqw8Lhc8FVQtQisYTN6B477ukSkG"
+      },
+      {
+        "address": "rrsZ4r57pPrrnFfuqTvtVmTpGXb6RcBuZg"
+      },
+      {
+        "address": "rByTJq8pGJJF14UghgaXDcsnV1QqCFEwQy"
+      }
+    ]
+  },
+  "governance": {
+    "address": "rB6b46dDoxhJtnJ52w5BtErYBazapCpCAD",
+    "quorum": 2,
+    "signers": [
+      {
+        "address": "rJQ47qx4EsKo1RuddSJQ9RnKsxvxi7P2r9"
+      },
+      {
+        "address": "rBKbxwJVX2mgwNXLX4qKCxwNXcerCgtvxd"
+      },
+      {
+        "address": "r4XHkJA3iNbuL8Dk58nmYsbsmFgiSWrFNe"
+      }
+    ]
   }
 }
