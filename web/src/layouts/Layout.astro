@@ -38,6 +38,10 @@ const { title } = Astro.props
       <a href={withBase('/propose-mint')}>Propose a Mint</a>
       <a href={withBase('/propose-disbursement')}>Propose a Disbursement</a>
       <a href={withBase('/sign')}>Sign a Proposal</a>
+      <span class="nav-connect">
+        <span id="header-connect-status">Not connected.</span>
+        <button id="header-connect-button" type="button">Connect with GhostSig</button>
+      </span>
     </nav>
     <main>
       <slot />
@@ -53,3 +57,8 @@ const { title } = Astro.props
     </footer>
   </body>
 </html>
+
+<script>
+  import { initConnectHeader } from '../lib/connect'
+  initConnectHeader()
+</script>

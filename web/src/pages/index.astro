@@ -9,11 +9,12 @@ import { withBase } from '../lib/paths'
     <strong>XRPL Testnet</strong>. Nothing here has monetary value.
   </div>
 
+  <div id="page-error"></div>
+
   <section class="card" id="connect-card">
     <h2>Your wallet</h2>
-    <p id="connect-status">Not connected.</p>
-    <button id="connect-button" type="button">Connect with GhostSig</button>
-    <div id="role-ctas" style="display:none; margin-top: 1rem;">
+    <p id="not-connected-hint">Connect with GhostSig (top right) to see your role and balance.</p>
+    <div id="role-ctas" style="display:none;">
       <a class="button secondary" id="propose-mint-cta" href={withBase('/propose-mint')} style="display:none; margin-right: 0.5rem;">Propose a Mint</a>
       <a class="button secondary" id="propose-disbursement-cta" href={withBase('/propose-disbursement')} style="display:none;">Propose a Disbursement</a>
     </div>
@@ -90,15 +91,16 @@ import { withBase } from '../lib/paths'
 
 <script>
   import { loadPublicConfig, isIssuerSigner, isGovernanceSigner } from '../lib/config'
-  import { ghostsigConnect, ghostsigSign, GhostsigError } from '../lib/ghostsig'
+  import { onConnectionChange } from '../lib/connect'
+  import { ghostsigSign, GhostsigError } from '../lib/ghostsig'
   import { buildMptAuthorizeTx, buildMptPaymentTx } from '../lib/tx'
   import { getOutstandingSupplyRaw, getMptHolding, getXrpBalanceDrops, isAccountFunded, TESTNET_EXPLORER_BASE } from '../lib/xrplClient'
   import { toGton, fromGton } from '../lib/gton'
 
   let connectedAddress: string | undefined
 
-  const connectButton = document.getElementById('connect-button') as HTMLButtonElement
-  const connectStatus = document.getElementById('connect-status')!
+  const pageError = document.getElementById('page-error')!
+  const notConnectedHint = document.getElementById('not-connected-hint')!
   const roleCtas = document.getElementById('role-ctas')!
   const proposeMintCta = document.getElementById('propose-mint-cta') as HTMLAnchorElement
   const proposeDisbursementCta = document.getElementById('propose-disbursement-cta') as HTMLAnchorElement
@@ -181,28 +183,22 @@ import { withBase } from '../lib/paths'
 
     await refreshStats(config.mptIssuanceId)
 
-    connectButton.addEventListener('click', async () => {
-      connectButton.disabled = true
-      try {
-        const { address } = await ghostsigConnect()
-        connectedAddress = address
-        const roles: string[] = []
-        if (isIssuerSigner(config, address)) roles.push('Mint Signer')
-        if (isGovernanceSigner(config, address)) roles.push('Governance Signer')
-        const greeting = roles.length > 0 ? `Welcome, ${roles.join(' & ')}!` : 'Connected.'
-        connectStatus.innerHTML = `${greeting} <span class="mono address">${address}</span>`
-        roleCtas.style.display = 'block'
-        proposeMintCta.style.display = isIssuerSigner(config, address) ? 'inline-block' : 'none'
-        proposeDisbursementCta.style.display = isGovernanceSigner(config, address) ? 'inline-block' : 'none'
-        if (config.mptIssuanceId) {
-          await ensureAuthorized(config.mptIssuanceId)
-          await refreshStats(config.mptIssuanceId)
-        }
-      } catch (err) {
-        const message = err instanceof GhostsigError ? err.message : err instanceof Error ? err.message : String(err)
-        statusMessage(connectStatus, 'error', message)
-      } finally {
-        connectButton.disabled = false
+    onConnectionChange(async (address) => {
+      connectedAddress = address ?? undefined
+      if (!address) {
+        notConnectedHint.style.display = 'block'
+        roleCtas.style.display = 'none'
+        sendCard.style.display = 'none'
+        authorizeArea.style.display = 'none'
+        return
+      }
+      notConnectedHint.style.display = 'none'
+      roleCtas.style.display = 'block'
+      proposeMintCta.style.display = isIssuerSigner(config, address) ? 'inline-block' : 'none'
+      proposeDisbursementCta.style.display = isGovernanceSigner(config, address) ? 'inline-block' : 'none'
+      if (config.mptIssuanceId) {
+        await ensureAuthorized(config.mptIssuanceId)
+        await refreshStats(config.mptIssuanceId)
       }
     })
 
@@ -229,6 +225,6 @@ import { withBase } from '../lib/paths'
   }
 
   main().catch((err) => {
-    statusMessage(connectStatus, 'error', err instanceof Error ? err.message : String(err))
+    statusMessage(pageError, 'error', err instanceof Error ? err.message : String(err))
   })
 </script>
