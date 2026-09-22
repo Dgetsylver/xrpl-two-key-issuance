@@ -40,11 +40,24 @@ export interface MemoInput {
   data: string
 }
 
+/**
+ * UTF-8-encodes and hex-encodes `value`. Deliberately avoids Node's
+ * `Buffer` global (only `TextEncoder`, which is available everywhere --
+ * Node and browsers alike) since this module is reused unmodified in the
+ * browser bundle under `web/`.
+ */
+function utf8ToHex(value: string): string {
+  return Array.from(new TextEncoder().encode(value))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+    .toUpperCase()
+}
+
 function toMemo({ type, data }: MemoInput): NonNullable<Payment['Memos']>[number] {
   return {
     Memo: {
-      MemoType: Buffer.from(type, 'utf-8').toString('hex').toUpperCase(),
-      MemoData: Buffer.from(data, 'utf-8').toString('hex').toUpperCase(),
+      MemoType: utf8ToHex(type),
+      MemoData: utf8ToHex(data),
     },
   }
 }

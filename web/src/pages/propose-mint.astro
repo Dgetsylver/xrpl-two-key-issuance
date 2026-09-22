@@ -42,6 +42,7 @@ import Layout from '../layouts/Layout.astro'
   import { describePaymentTx } from '../lib/preview'
   import { getMintHistory, suggestNextMintPeriod } from '../lib/xrplClient'
   import { toGton, fromGton } from '../lib/gton'
+  import { getStoredAddress, setStoredAddress, clearStoredAddress } from '../lib/session'
   import QRCode from 'qrcode'
 
   const connectButton = document.getElementById('connect-button') as HTMLButtonElement
@@ -77,21 +78,31 @@ import Layout from '../layouts/Layout.astro'
       periodInput.value = String(new Date().getFullYear())
     }
 
+    function onConnected(address: string) {
+      connectedAddress = address
+      setStoredAddress(address)
+      if (isIssuerSigner(config, address)) {
+        connectStatus.innerHTML = `Connected as <span class="mono address">${address}</span> — recognized issuer signer. <button type="button" id="disconnect-button" style="background:none;border:none;color:inherit;text-decoration:underline;cursor:pointer;padding:0;font:inherit;">not you?</button>`
+      } else {
+        statusMessage(
+          connectStatus,
+          'error',
+          `Connected as <span class="mono address">${address}</span> — this address is not on the issuer's published signer list. GhostSig will refuse to sign for the issuer account unless it's on the account's live SignerList.`,
+        )
+      }
+      document.getElementById('disconnect-button')?.addEventListener('click', () => {
+        clearStoredAddress()
+        window.location.reload()
+      })
+      connectButton.style.display = 'none'
+      mintForm.style.display = 'block'
+    }
+
     connectButton.addEventListener('click', async () => {
       connectButton.disabled = true
       try {
         const { address } = await ghostsigConnect()
-        connectedAddress = address
-        if (isIssuerSigner(config, address)) {
-          connectStatus.innerHTML = `Connected as <span class="mono address">${address}</span> — recognized issuer signer.`
-        } else {
-          statusMessage(
-            connectStatus,
-            'error',
-            `Connected as <span class="mono address">${address}</span> — this address is not on the issuer's published signer list. GhostSig will refuse to sign for the issuer account unless it's on the account's live SignerList.`,
-          )
-        }
-        mintForm.style.display = 'block'
+        onConnected(address)
       } catch (err) {
         const message = err instanceof GhostsigError ? err.message : err instanceof Error ? err.message : String(err)
         statusMessage(connectStatus, 'error', message)
@@ -99,6 +110,11 @@ import Layout from '../layouts/Layout.astro'
         connectButton.disabled = false
       }
     })
+
+    const storedAddress = getStoredAddress()
+    if (storedAddress) {
+      onConnected(storedAddress)
+    }
 
     mintForm.addEventListener('submit', async (event) => {
       event.preventDefault()

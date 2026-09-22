@@ -89,11 +89,12 @@ import { withBase } from '../lib/paths'
 </Layout>
 
 <script>
-  import { loadPublicConfig, isIssuerSigner, isGovernanceSigner } from '../lib/config'
+  import { loadPublicConfig, isIssuerSigner, isGovernanceSigner, type PublicDeploymentConfig } from '../lib/config'
   import { ghostsigConnect, ghostsigSign, GhostsigError } from '../lib/ghostsig'
   import { buildMptAuthorizeTx, buildMptPaymentTx } from '../lib/tx'
   import { getOutstandingSupplyRaw, getMptHolding, getXrpBalanceDrops, isAccountFunded, TESTNET_EXPLORER_BASE } from '../lib/xrplClient'
   import { toGton, fromGton } from '../lib/gton'
+  import { getStoredAddress, setStoredAddress, clearStoredAddress } from '../lib/session'
 
   let connectedAddress: string | undefined
 
@@ -166,6 +167,28 @@ import { withBase } from '../lib/paths'
     authorizeArea.appendChild(button)
   }
 
+  async function onConnected(address: string, config: PublicDeploymentConfig) {
+    connectedAddress = address
+    setStoredAddress(address)
+    const roles: string[] = []
+    if (isIssuerSigner(config, address)) roles.push('Mint Signer')
+    if (isGovernanceSigner(config, address)) roles.push('Governance Signer')
+    const greeting = roles.length > 0 ? `Welcome, ${roles.join(' & ')}!` : 'Connected.'
+    connectStatus.innerHTML = `${greeting} <span class="mono address">${address}</span> — <button type="button" id="disconnect-button" style="background:none;border:none;color:inherit;text-decoration:underline;cursor:pointer;padding:0;font:inherit;">not you?</button>`
+    document.getElementById('disconnect-button')?.addEventListener('click', () => {
+      clearStoredAddress()
+      window.location.reload()
+    })
+    connectButton.style.display = 'none'
+    roleCtas.style.display = 'block'
+    proposeMintCta.style.display = isIssuerSigner(config, address) ? 'inline-block' : 'none'
+    proposeDisbursementCta.style.display = isGovernanceSigner(config, address) ? 'inline-block' : 'none'
+    if (config.mptIssuanceId) {
+      await ensureAuthorized(config.mptIssuanceId)
+      await refreshStats(config.mptIssuanceId)
+    }
+  }
+
   async function main() {
     const config = await loadPublicConfig()
     document.getElementById('issuer-address')!.textContent = config.issuer?.address ?? '(not deployed yet)'
@@ -185,19 +208,7 @@ import { withBase } from '../lib/paths'
       connectButton.disabled = true
       try {
         const { address } = await ghostsigConnect()
-        connectedAddress = address
-        const roles: string[] = []
-        if (isIssuerSigner(config, address)) roles.push('Mint Signer')
-        if (isGovernanceSigner(config, address)) roles.push('Governance Signer')
-        const greeting = roles.length > 0 ? `Welcome, ${roles.join(' & ')}!` : 'Connected.'
-        connectStatus.innerHTML = `${greeting} <span class="mono address">${address}</span>`
-        roleCtas.style.display = 'block'
-        proposeMintCta.style.display = isIssuerSigner(config, address) ? 'inline-block' : 'none'
-        proposeDisbursementCta.style.display = isGovernanceSigner(config, address) ? 'inline-block' : 'none'
-        if (config.mptIssuanceId) {
-          await ensureAuthorized(config.mptIssuanceId)
-          await refreshStats(config.mptIssuanceId)
-        }
+        await onConnected(address, config)
       } catch (err) {
         const message = err instanceof GhostsigError ? err.message : err instanceof Error ? err.message : String(err)
         statusMessage(connectStatus, 'error', message)
@@ -205,6 +216,11 @@ import { withBase } from '../lib/paths'
         connectButton.disabled = false
       }
     })
+
+    const storedAddress = getStoredAddress()
+    if (storedAddress) {
+      await onConnected(storedAddress, config)
+    }
 
     sendForm.addEventListener('submit', async (event) => {
       event.preventDefault()
