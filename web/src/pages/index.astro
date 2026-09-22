@@ -1,5 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro'
+import { withBase } from '../lib/paths'
 ---
 
 <Layout title="Dashboard">
@@ -13,8 +14,8 @@ import Layout from '../layouts/Layout.astro'
     <p id="connect-status">Not connected.</p>
     <button id="connect-button" type="button">Connect with GhostSig</button>
     <div id="role-ctas" style="display:none; margin-top: 1rem;">
-      <a class="button secondary" id="propose-mint-cta" href="/propose-mint" style="display:none; margin-right: 0.5rem;">Propose a Mint</a>
-      <a class="button secondary" id="propose-disbursement-cta" href="/propose-disbursement" style="display:none;">Propose a Disbursement</a>
+      <a class="button secondary" id="propose-mint-cta" href={withBase('/propose-mint')} style="display:none; margin-right: 0.5rem;">Propose a Mint</a>
+      <a class="button secondary" id="propose-disbursement-cta" href={withBase('/propose-disbursement')} style="display:none;">Propose a Disbursement</a>
     </div>
     <div id="authorize-area" style="display:none; margin-top: 1rem;"></div>
   </section>
@@ -72,7 +73,7 @@ import Layout from '../layouts/Layout.astro'
     </p>
     <p>
       Ceremonies (a mint or a disbursement) are proposed and co-signed entirely in the browser: whoever proposes signs
-      first, then relays a link to the next signer (see <a href="/sign">Sign a Proposal</a>). Once enough signatures
+      first, then relays a link to the next signer (see <a href={withBase('/sign')}>Sign a Proposal</a>). Once enough signatures
       are collected, GhostSig submits the transaction itself.
     </p>
     <p>
