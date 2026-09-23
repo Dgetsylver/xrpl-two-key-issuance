@@ -70,7 +70,7 @@ export async function getMptHolding(address: string, mptIssuanceId: string): Pro
 export async function destinationReadinessWarning(address: string, mptIssuanceId: string, ticker: string): Promise<string | null> {
   const holding = await getMptHolding(address, mptIssuanceId)
   if (holding.authorized) return null
-  return `${address} hasn't authorized itself to hold ${ticker} yet (or doesn't exist on Testnet) — sending to it will fail until it does. They can self-authorize from the dashboard once they connect with GhostSig.`
+  return `${address} hasn't authorized themself to hold ${ticker} yet (or doesn't exist on Testnet) — sending to it will fail until it does. They can self-authorize from the dashboard once they connect with GhostSig.`
 }
 
 /** Returns the account's XRP balance in drops, or `undefined` if it isn't funded/activated yet. */
