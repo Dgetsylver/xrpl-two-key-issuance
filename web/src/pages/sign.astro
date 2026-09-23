@@ -141,6 +141,8 @@ import Layout from '../layouts/Layout.astro'
   async function main() {
     const config = await loadPublicConfig()
     const mptIssuanceId = requireMptIssuanceId(config)
+    /** Whether the issuance requires admission: the ledger's flags, else the published ones. */
+    const requireAuthRead = getRequireAuth(mptIssuanceId, configRequiresAuth(config))
     const ctx = {
       ticker: config.token.ticker,
       mptIssuanceId,
@@ -240,7 +242,7 @@ import Layout from '../layouts/Layout.astro'
       const warning = $('destination-warning')
       const holder = proposal.holder
       if (!holder) return
-      Promise.all([getMptHolding(holder, mptIssuanceId), getRequireAuth(mptIssuanceId, configRequiresAuth(config))])
+      Promise.all([getMptHolding(holder, mptIssuanceId), requireAuthRead])
         .then(([holding, requireAuth]) => {
           const notice = admissionNotice(admissionState(holding, requireAuth), holder, ctx.ticker)
           if (notice) warning.innerHTML = readinessHtml(notice)
@@ -260,7 +262,9 @@ import Layout from '../layouts/Layout.astro'
       // Units returned to the Register are cancelled; the issuer never holds an MPToken, so skip the check.
       if (proposal.kind === 'unrecognised' || !proposal.destination || proposal.destination === ctx.issuer) return
       const source = proposal.account === ctx.desk ? 'The Dealing Desk' : 'The sending account'
-      checkTransfer(proposal.account, proposal.destination, mptIssuanceId, { source, amount: proposal.amountRaw })
+      const destination = proposal.destination
+      requireAuthRead
+        .then((requireAuth) => checkTransfer(proposal.account, destination, mptIssuanceId, { source, amount: proposal.amountRaw, requireAuth }))
         .then((notice) => {
           if (notice) warning.innerHTML = readinessHtml(notice)
         })

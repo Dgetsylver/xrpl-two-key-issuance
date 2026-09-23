@@ -506,7 +506,7 @@ const seatChips = (keySet: 'register' | 'desk') => brand.seats[keySet]
       warning.innerHTML = ''
       if (!to) return
       try {
-        const notice = await checkTransfer(address, to, mptIssuanceId, { source: 'Your account' })
+        const notice = await checkTransfer(address, to, mptIssuanceId, { source: 'Your account', requireAuth: await requireAuthRead })
         if (notice) warning.innerHTML = readinessHtml(notice)
       } catch {
         warning.innerHTML = statusHtml('error', 'Could not check the destination. Try again before signing.')
