@@ -1,8 +1,7 @@
-import { connectClient } from '../lib/client.js'
+import { connectClient, withWalletClient } from '../lib/client.js'
 import { fundNewWallet, parseSignerAddressesEnv, resolveSignerWallets } from '../lib/fund.js'
 import { establishMultisigAndDisableMasterKey } from '../lib/accountSetup.js'
-import { assertTesSuccess } from '../lib/txResult.js'
-import { buildMptIssuanceCreateTx } from '../lib/mpt.js'
+import { MPT_ISSUANCE_FLAGS } from '../lib/mpt.js'
 import { buildMptMetadataHex, readTokenMetadataConfig } from '../lib/metadata.js'
 import { loadDeploymentState, saveDeploymentState } from '../lib/config.js'
 
@@ -39,16 +38,17 @@ async function main(): Promise<void> {
     // one-time bootstrap action would itself need a live, multi-person
     // browser ceremony just to get the token issued.
     const metadataHex = buildMptMetadataHex(readTokenMetadataConfig())
-    const issuanceTx = await client.autofill(buildMptIssuanceCreateTx(issuer.address, metadataHex))
-    const issuanceResult = await client.submitAndWait(issuer.sign(issuanceTx).tx_blob)
-    assertTesSuccess(issuanceResult, 'MPTokenIssuanceCreate')
-    const mptIssuanceId = (issuanceResult.result.meta as { mpt_issuance_id?: string }).mpt_issuance_id
-    if (!mptIssuanceId) {
-      throw new Error('MPTokenIssuanceCreate succeeded but no mpt_issuance_id was returned.')
-    }
-    console.log(`Created MPT issuance: ${mptIssuanceId}`)
-
-    await establishMultisigAndDisableMasterKey(client, issuer, signers, SIGNER_QUORUM)
+    const mptIssuanceId = await withWalletClient(client, issuer, async (signing) => {
+      const issued = await signing.tx.mpTokenIssuanceCreate({
+        MPTokenMetadata: metadataHex,
+        Flags: MPT_ISSUANCE_FLAGS,
+      }).signAndSubmit()
+      const id = issued.result.meta.mpt_issuance_id
+      if (!id) throw new Error('MPTokenIssuanceCreate succeeded but no mpt_issuance_id was returned.')
+      console.log(`Created MPT issuance: ${id}`)
+      await establishMultisigAndDisableMasterKey(signing, signers, SIGNER_QUORUM)
+      return id
+    })
     console.log(`Configured ${SIGNER_QUORUM}-of-${signers.length} multisig and disabled the issuer's master key.`)
 
     saveDeploymentState({

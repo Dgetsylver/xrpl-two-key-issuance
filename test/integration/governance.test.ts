@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { readMptHolding } from '../../src/lib/ledger.js'
 import { submitMultisigned } from '../../src/lib/multisig.js'
-import { assertTesSuccess } from '../../src/lib/txResult.js'
 import { buildMptPaymentTx } from '../../src/lib/mpt.js'
 import { startLocalNetwork, type LocalNetworkHandle } from '../helpers/localNetwork.js'
 import { connectClient, setupAuthorizedHolder, setupGovernance, setupIssuer, testEnv } from '../helpers/fixtures.js'
@@ -23,16 +23,19 @@ describe('governance', () => {
       const { mptIssuanceId } = await setupIssuer(client, netCfg, env)
       const governance = await setupGovernance(client, netCfg, mptIssuanceId)
 
-      const signerLists = await client.request({ command: 'account_objects', account: governance.address, type: 'signer_list' })
-      const signerList = signerLists.result.account_objects[0] as { SignerQuorum?: number; SignerEntries?: unknown[] }
-      expect(signerList.SignerQuorum).toBe(2)
-      expect(signerList.SignerEntries).toHaveLength(3)
+      const signerLists = await client.command.accountObjects({ account: governance.address, type: 'signer_list' })
+      const signerList = signerLists.result.account_objects[0]
+      expect(signerList?.SignerQuorum).toBe(2)
+      expect(signerList?.SignerEntries).toHaveLength(3)
 
-      const accountInfo = await client.request({ command: 'account_info', account: governance.address })
+      const accountInfo = await client.command.accountInfo({ account: governance.address })
       expect(accountInfo.result.account_flags?.disableMasterKey).toBe(true)
 
-      const mptObjects = await client.request({ command: 'account_objects', account: governance.address, type: 'mptoken' })
+      const mptObjects = await client.command.accountObjects({ account: governance.address, type: 'mptoken' })
       expect(mptObjects.result.account_objects).toHaveLength(1)
+      const holding = await readMptHolding(client, governance.address, mptIssuanceId)
+      expect(holding).toBeDefined()
+      expect(holding?.MPTAmount ?? '0').toBe('0')
     } finally {
       await client.disconnect()
     }
@@ -46,25 +49,23 @@ describe('governance', () => {
       const governance = await setupGovernance(client, netCfg, mptIssuanceId)
       const recipient = await setupAuthorizedHolder(client, netCfg, mptIssuanceId)
 
-      const mintResult = await submitMultisigned(
+      await submitMultisigned(
         client,
         buildMptPaymentTx(issuer.address, governance.address, mptIssuanceId, '1000'),
         issuer.signers.slice(0, issuer.quorum),
       )
-      assertTesSuccess(mintResult, 'mint Payment')
 
-      const redistributeResult = await submitMultisigned(
+      await submitMultisigned(
         client,
         buildMptPaymentTx(governance.address, recipient.address, mptIssuanceId, '400'),
         governance.signers.slice(0, governance.quorum),
       )
-      assertTesSuccess(redistributeResult, 'redistribute Payment')
 
-      const recipientMpt = await client.request({ command: 'account_objects', account: recipient.address, type: 'mptoken' })
-      expect((recipientMpt.result.account_objects[0] as { MPTAmount?: string }).MPTAmount).toBe('400')
+      const recipientMpt = await readMptHolding(client, recipient.address, mptIssuanceId)
+      expect(recipientMpt?.MPTAmount).toBe('400')
 
-      const governanceMpt = await client.request({ command: 'account_objects', account: governance.address, type: 'mptoken' })
-      expect((governanceMpt.result.account_objects[0] as { MPTAmount?: string }).MPTAmount).toBe('600')
+      const governanceMpt = await readMptHolding(client, governance.address, mptIssuanceId)
+      expect(governanceMpt?.MPTAmount).toBe('600')
     } finally {
       await client.disconnect()
     }

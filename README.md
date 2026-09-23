@@ -5,6 +5,24 @@ standard (not classic trust-line Issued Currencies). New supply is minted
 annually via a multisig-gated issuer account and sent to a multisig-gated
 governance account, which will later decide fund allocation.
 
+
+## Aha DevX prototype
+
+This branch uses [the aha xrpl.js prototype (PR #57)](https://github.com/theahaco/xrpl.js/pull/57),
+pinned to the commit in [`prototype.json`](prototype.json). Run `npm run prototype:setup`
+before installing this app. It creates an ignored `.prototype/xrpl.js` checkout and
+builds all seven SDK packages; both the CLI and browser resolve that same build.
+No npm release or developer-specific checkout path is needed. CI uses the same setup.
+To update the SDK, change the commit pin, rerun setup, and refresh both lockfiles.
+
+Local signing uses `WalletClient.tx` and throws unless the transaction validates
+successfully. Ledger reads use the discoverable `client.command` API with inferred
+response types. GhostSig still owns browser keys and the multi-person ceremony;
+we never instantiate a local signing wallet for a GhostSig address.
+
+See [the migration PR](https://github.com/theahaco/carbon-coin/pull/9) for before/after
+code, remaining boundaries, related SDK PRs, and validation.
+
 ## Design summary
 
 - **Token standard**: XRPL native MPToken (`MPTokenIssuanceCreate` /
@@ -34,7 +52,7 @@ in `src/`.
 
 ## Prerequisites
 
-- Node.js 22+ (required by Astro, used for the web frontend)
+- Node.js 22.12+ (required by Astro, used for the web frontend)
 - Docker — only required for `XRPL_NETWORK=local` (this project was
   developed and tested against [colima](https://github.com/abiosoft/colima);
   Docker Desktop should also work). Skip it entirely by using
@@ -43,7 +61,9 @@ in `src/`.
 ## Setup
 
 ```sh
-npm install
+npm run prototype:setup   # builds the exact aha SDK commit in prototype.json
+npm ci
+npm --prefix web ci
 cp .env.example .env
 ```
 

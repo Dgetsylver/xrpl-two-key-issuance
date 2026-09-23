@@ -21,11 +21,12 @@
     "web:typecheck": "npm --prefix web run typecheck",
     "web:test": "npm --prefix web run test",
     "test:integration": "vitest run",
-    "typecheck": "tsc --noEmit && npm run web:typecheck"
+    "typecheck": "tsc --noEmit && npm run web:typecheck",
+    "prototype:setup": "node scripts/setup-prototype.mjs"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
-    "xrpl": "^4.1.0"
+    "xrpl": "file:.prototype/xrpl.js/packages/xrpl"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

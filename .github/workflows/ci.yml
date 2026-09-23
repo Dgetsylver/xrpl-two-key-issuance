@@ -14,7 +14,7 @@ jobs:
   typecheck:
     name: Typecheck
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -25,6 +25,8 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             web/package-lock.json
+
+      - run: npm run prototype:setup
 
       - run: npm ci
 
@@ -53,6 +55,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
+
+      - run: npm run prototype:setup
 
       - run: npm ci
 

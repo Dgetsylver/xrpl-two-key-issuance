@@ -17,7 +17,7 @@
   "dependencies": {
     "astro": "^7.3.3",
     "qrcode": "^1.5.4",
-    "xrpl": "^4.1.0"
+    "xrpl": "file:../.prototype/xrpl.js/packages/xrpl"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",

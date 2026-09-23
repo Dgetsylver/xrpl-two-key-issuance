@@ -1,116 +1,56 @@
-import { Client, Wallet, multisign as combineMultisignedBlobs, type SignerListSet, type SubmittableTransaction, type TxResponse } from 'xrpl'
+import { Client, Wallet, multisign, type SubmittableTransaction, type SubmitResult } from 'xrpl'
 import type { SignerWallet } from './config.js'
-import { assertTesSuccess, getTransactionResult } from './txResult.js'
 
-export { assertTesSuccess, getTransactionResult }
-
-/**
- * Builds an (unsigned) SignerListSet transaction establishing a placeholder
- * N-of-M multisig on `account`. Each signer gets equal weight (1), so the
- * quorum is simply the number of required signatures.
- */
-export function buildSignerListSetTx(account: string, signers: SignerWallet[], quorum: number): SignerListSet {
-  if (quorum < 1 || quorum > signers.length) {
+/** Equal-weight signer entries for this demo's N-of-M policy. */
+export function signerListFields(signers: SignerWallet[], quorum: number) {
+  if (!Number.isInteger(quorum) || quorum < 1 || quorum > signers.length) {
     throw new Error(`Invalid quorum ${quorum} for ${signers.length} signer(s).`)
   }
+  if (new Set(signers.map(({ address }) => address)).size !== signers.length) {
+    throw new Error('Signer addresses must be unique.')
+  }
   return {
-    TransactionType: 'SignerListSet',
-    Account: account,
     SignerQuorum: quorum,
-    SignerEntries: signers.map((signer) => ({
-      SignerEntry: {
-        Account: signer.address,
-        SignerWeight: 1,
-      },
+    SignerEntries: signers.map(({ address }) => ({
+      SignerEntry: { Account: address, SignerWeight: 1 },
     })),
   }
 }
 
-export type ExpiryMode =
-  /** Set a very large LastLedgerSequence window (see CEREMONY_LEDGER_OFFSET
-   * below) so the transaction stays valid long enough for a real, possibly
-   * slow, multi-person signing ceremony. This is the default. */
-  | 'ceremony'
-  /** Keep the short (~1-2 minute) LastLedgerSequence window that
-   * `client.autofill` sets by default -- only appropriate for fast,
-   * fully-automated flows such as local integration tests. */
-  | 'fast'
-
-export interface SubmitMultisignedOptions {
-  expiry?: ExpiryMode
-}
-
-/**
- * How many ledgers beyond the current one a "ceremony" mode transaction
- * remains valid for. xrpl.js's submitAndWait refuses to submit a
- * transaction with no LastLedgerSequence at all (it considers that unsafe
- * for reliable submission), so instead of omitting it we set a very
- * generous window -- on a live network closing ledgers every few seconds,
- * this is on the order of weeks, comfortably covering a slow, multi-person
- * signing ceremony.
- */
-const CEREMONY_LEDGER_OFFSET = 1_000_000
-
-/**
- * Prepares `tx` for multisigning (fee sized for `signerWallets.length`
- * signatures, per XRPL's multisig fee rule), collects one signature per
- * wallet in `signerWallets`, combines them, and submits.
- *
- * Does not throw on a non-tesSUCCESS engine result -- callers decide whether
- * that's an expected failure (e.g. a negative test) or should raise (see
- * `assertTesSuccess`).
- */
-export async function submitMultisigned(
-  client: Client,
-  tx: SubmittableTransaction,
-  signerWallets: SignerWallet[],
-  options: SubmitMultisignedOptions = {},
-): Promise<TxResponse<SubmittableTransaction>> {
-  const expiry = options.expiry ?? 'ceremony'
-
-  const prepared = await client.autofill(tx, signerWallets.length)
-  // Multisigned transactions must not carry a single-key SigningPubKey.
-  ;(prepared as Record<string, unknown>).SigningPubKey = ''
-  if (expiry === 'ceremony') {
-    const currentLedger = await client.getLedgerIndex()
-    ;(prepared as Record<string, unknown>).LastLedgerSequence = currentLedger + CEREMONY_LEDGER_OFFSET
+/** Select locally available signers; external signers must use the browser ceremony. */
+export function localSigners(signers: SignerWallet[], quorum: number): SignerWallet[] {
+  signerListFields(signers, quorum)
+  const available = signers.filter(({ seed }) => seed.length > 0).slice(0, quorum)
+  if (available.length < quorum) {
+    throw new Error(`This account needs ${quorum} signatures but only ${available.length} local signer(s) are available. Use the GhostSig browser ceremony.`)
   }
-
-  const signedBlobs = signerWallets.map((signer) => {
-    const wallet = Wallet.fromSeed(signer.seed)
-    const { tx_blob } = wallet.sign(prepared, true)
-    return tx_blob
-  })
-
-  const combinedBlob = combineMultisignedBlobs(signedBlobs)
-  return submitAndNormalizeFailures(client, combinedBlob)
+  return available
 }
 
 /**
- * Wraps `client.submitAndWait`. When a transaction is preliminarily
- * rejected (e.g. `tefBAD_QUORUM` for too few signatures) and then expires
- * without ever entering a ledger, xrpl.js throws an `XrplError` instead of
- * returning a result -- which would defeat the "never throws on a
- * non-success engine result" contract this module documents. This catches
- * that specific shape and turns it back into an ordinary failed result so
- * callers (including tests asserting on expected failures) have one
- * consistent, non-throwing interface.
+ * Prepare and combine local signatures. The SDK does not yet have a multisig
+ * builder: retain this explicit boundary until it can own the signing strategy.
+ * These signatures are collected immediately, so use autofill's bounded expiry.
  */
-export async function submitAndNormalizeFailures(
-  client: Client,
-  combinedBlob: string,
-): Promise<TxResponse<SubmittableTransaction>> {
+export async function signMultisigned(client: Client, tx: SubmittableTransaction, signers: SignerWallet[]): Promise<string> {
+  if (signers.length === 0 || signers.some(({ seed }) => !seed)) {
+    throw new Error('Local multisigning requires a seed for every selected signer. Use GhostSig for external signers.')
+  }
+  const prepared = await client.autofill(tx, signers.length)
+  prepared.SigningPubKey = ''
+  return multisign(signers.map(({ seed }) => Wallet.fromSeed(seed).sign(prepared, true).tx_blob))
+}
+
+/** Resolves only after validated success; failures retain the SDK's original error. */
+export async function submitMultisigned(client: Client, tx: SubmittableTransaction, signers: SignerWallet[]) {
+  return client.submitAndWait(await signMultisigned(client, tx, signers))
+}
+
+/** Explicit outcome for callers expecting a failure, with no fabricated ledger response. */
+export async function trySubmitMultisigned(client: Client, tx: SubmittableTransaction, signers: SignerWallet[]): Promise<SubmitResult> {
   try {
-    return await client.submitAndWait(combinedBlob)
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    const match = /Preliminary result: (\w+)/.exec(message)
-    if (match) {
-      return {
-        result: { meta: { TransactionResult: match[1] } },
-      } as unknown as TxResponse<SubmittableTransaction>
-    }
-    throw err
+    return await client.trySubmitAndWait(await signMultisigned(client, tx, signers))
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error : new Error(String(error)) }
   }
 }
-

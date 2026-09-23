@@ -64,7 +64,7 @@ async function waitUntilReady(wsUrl: string, attempts = 40, delayMs = 500): Prom
     const client = new Client(wsUrl)
     try {
       await client.connect()
-      await client.request({ command: 'server_info' })
+      await client.command.serverInfo()
       await client.disconnect()
       return
     } catch {

@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { Wallet } from 'xrpl'
-import { getTransactionResult, submitAndNormalizeFailures, submitMultisigned } from '../../src/lib/multisig.js'
-import { assertTesSuccess } from '../../src/lib/txResult.js'
+import { Wallet, TransactionFailedError } from 'xrpl'
+import { trySubmitMultisigned, submitMultisigned } from '../../src/lib/multisig.js'
 import { buildMptPaymentTx } from '../../src/lib/mpt.js'
+import { readMptHolding } from '../../src/lib/ledger.js'
 import { fundNewWallet } from '../../src/lib/fund.js'
 import { startLocalNetwork, type LocalNetworkHandle } from '../helpers/localNetwork.js'
 import { connectClient, setupGovernance, setupIssuer, testEnv } from '../helpers/fixtures.js'
@@ -30,14 +30,13 @@ describe('mint', () => {
         data: '2026',
       })
       const result = await submitMultisigned(client, paymentTx, issuer.signers.slice(0, issuer.quorum))
-      assertTesSuccess(result, 'mint Payment')
 
-      const issuance = await client.request({ command: 'ledger_entry', mpt_issuance: mptIssuanceId })
-      expect((issuance.result.node as { OutstandingAmount?: string }).OutstandingAmount).toBe('1000')
+      const issuance = await client.command.ledgerEntry({ mpt_issuance: mptIssuanceId })
+      expect(issuance.result.node.OutstandingAmount).toBe('1000')
 
-      const govMpt = await client.request({ command: 'account_objects', account: governance.address, type: 'mptoken' })
-      const mptoken = govMpt.result.account_objects[0] as { MPTAmount?: string }
-      expect(mptoken.MPTAmount).toBe('1000')
+      const govMpt = await client.command.accountObjects({ account: governance.address, type: 'mptoken' })
+      const mptoken = govMpt.result.account_objects[0]
+      expect(mptoken?.MPTAmount).toBe('1000')
     } finally {
       await client.disconnect()
     }
@@ -51,8 +50,9 @@ describe('mint', () => {
       const governance = await setupGovernance(client, netCfg, mptIssuanceId)
 
       const paymentTx = buildMptPaymentTx(issuer.address, governance.address, mptIssuanceId, '1')
-      const result = await submitMultisigned(client, paymentTx, issuer.signers.slice(0, 1), { expiry: 'fast' })
-      expect(getTransactionResult(result)).toBe('tefBAD_QUORUM')
+      const result = await trySubmitMultisigned(client, paymentTx, issuer.signers.slice(0, 1))
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.error.message).toContain('tefBAD_QUORUM')
     } finally {
       await client.disconnect()
     }
@@ -68,8 +68,9 @@ describe('mint', () => {
       const issuerWallet = Wallet.fromSeed(issuer.seed)
       const paymentTx = await client.autofill(buildMptPaymentTx(issuer.address, governance.address, mptIssuanceId, '1'))
       const signed = issuerWallet.sign(paymentTx)
-      const result = await submitAndNormalizeFailures(client, signed.tx_blob)
-      expect(getTransactionResult(result)).toBe('tefMASTER_DISABLED')
+      const result = await client.trySubmitAndWait(signed.tx_blob)
+      expect(result.ok).toBe(false)
+      if (!result.ok) expect(result.error.message).toContain('tefMASTER_DISABLED')
     } finally {
       await client.disconnect()
     }
@@ -82,9 +83,14 @@ describe('mint', () => {
       const { issuer, mptIssuanceId } = await setupIssuer(client, netCfg, env)
       const unauthorized = await fundNewWallet(client, netCfg) // funded (exists), but never authorized
 
+      expect(await readMptHolding(client, unauthorized.address, mptIssuanceId)).toBeUndefined()
       const paymentTx = buildMptPaymentTx(issuer.address, unauthorized.address, mptIssuanceId, '1')
-      const result = await submitMultisigned(client, paymentTx, issuer.signers.slice(0, issuer.quorum), { expiry: 'fast' })
-      expect(getTransactionResult(result)).toBe('tecNO_AUTH')
+      const result = await trySubmitMultisigned(client, paymentTx, issuer.signers.slice(0, issuer.quorum))
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.error).toBeInstanceOf(TransactionFailedError)
+        expect(result.error).toMatchObject({ engineResult: 'tecNO_AUTH', phase: 'validated', response: { result: { validated: true } } })
+      }
     } finally {
       await client.disconnect()
     }

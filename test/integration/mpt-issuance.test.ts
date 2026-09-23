@@ -20,15 +20,8 @@ describe('MPT issuance', () => {
     try {
       const { issuer, mptIssuanceId } = await setupIssuer(client, netCfg, env)
 
-      const issuance = await client.request({ command: 'ledger_entry', mpt_issuance: mptIssuanceId })
-      const node = issuance.result.node as {
-        Flags?: number
-        AssetScale?: number
-        MaximumAmount?: string
-        OutstandingAmount?: string
-        MPTokenMetadata?: string
-        Issuer?: string
-      }
+      const issuance = await client.command.ledgerEntry({ mpt_issuance: mptIssuanceId })
+      const node = issuance.result.node
 
       // tfMPTCanLock (2) | tfMPTCanTransfer (32) | tfMPTCanClawback (64) = 98
       expect(node.Flags).toBe(98)
@@ -41,7 +34,7 @@ describe('MPT issuance', () => {
       expect(decoded.ticker).toBe(env.TOKEN_TICKER)
       expect(decoded.name).toBe(env.TOKEN_NAME)
 
-      const accountInfo = await client.request({ command: 'account_info', account: issuer.address })
+      const accountInfo = await client.command.accountInfo({ account: issuer.address })
       expect(accountInfo.result.account_flags?.disableMasterKey).toBe(true)
     } finally {
       await client.disconnect()

@@ -1,6 +1,6 @@
-import { Client, Wallet, xrpToDrops, type ECDSA } from 'xrpl'
+import { Client, Wallet, xrpToDrops, ECDSA } from 'xrpl'
 import { STANDALONE_GENESIS_ACCOUNT, type NetworkConfig } from './network.js'
-import { getTransactionResult } from './txResult.js'
+import { withWalletClient } from './client.js'
 import type { SignerWallet } from './config.js'
 
 /**
@@ -23,22 +23,13 @@ export async function fundNewWallet(client: Client, network: NetworkConfig): Pro
     // The genesis account's published address was derived with secp256k1;
     // xrpl.js defaults Wallet.fromSeed to ed25519, which yields a different
     // (wrong) address for this seed, so the algorithm must be explicit.
-    // ECDSA is a type-only import here: xrpl's ESM build doesn't expose it as
-    // a runtime named export (only its CJS build does), so we can't reference
-    // ECDSA.secp256k1 as a value -- the string literal is cast to the type instead.
-    const genesis = Wallet.fromSeed(STANDALONE_GENESIS_ACCOUNT.secret, { algorithm: 'secp256k1' as ECDSA })
-    const payment = await client.autofill({
-      TransactionType: 'Payment',
-      Account: genesis.address,
-      Destination: wallet.address,
-      Amount: xrpToDrops(LOCAL_FUNDING_AMOUNT_XRP),
+    const genesis = Wallet.fromSeed(STANDALONE_GENESIS_ACCOUNT.secret, { algorithm: ECDSA.secp256k1 })
+    await withWalletClient(client, genesis, async (signing) => {
+      await signing.tx.payment({
+        Destination: wallet.address,
+        Amount: xrpToDrops(LOCAL_FUNDING_AMOUNT_XRP),
+      }).signAndSubmit()
     })
-    const signed = genesis.sign(payment)
-    const result = await client.submitAndWait(signed.tx_blob)
-    const engineResult = getTransactionResult(result)
-    if (engineResult !== 'tesSUCCESS') {
-      throw new Error(`Failed to fund ${wallet.address} from genesis account: ${engineResult}`)
-    }
     return wallet
   }
 
@@ -76,11 +67,8 @@ export function parseSignerAddressesEnv(value: string | undefined): string[] {
  * reproduces today's fully-automatic behavior unchanged.
  *
  * Generated (seed-holding) wallets are listed *before* preset ones: the CLI
- * scripts (`mint.ts`/`redistribute.ts`) naively take `signers.slice(0,
- * quorum)` and sign with each wallet's seed, so keeping the seed-holding
- * wallets first means those scripts keep working out of the box (as long as
- * enough placeholder slots remain to meet quorum) even once real,
- * seedless signer addresses have been added -- ceremonies involving those
+ * scripts select locally available seeds and explain when a browser
+ * ceremony is needed to meet quorum. Ceremonies involving those
  * real signers instead happen through the browser (see `web/`), which
  * checks signer list membership directly rather than slicing by position.
  */

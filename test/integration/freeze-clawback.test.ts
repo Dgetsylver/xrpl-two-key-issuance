@@ -1,11 +1,10 @@
+import { MPTokenFlags } from 'xrpl'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { getTransactionResult, submitAndNormalizeFailures, submitMultisigned } from '../../src/lib/multisig.js'
-import { assertTesSuccess } from '../../src/lib/txResult.js'
+import { submitMultisigned } from '../../src/lib/multisig.js'
 import { buildClawbackTx, buildMptLockTx, buildMptPaymentTx } from '../../src/lib/mpt.js'
 import { startLocalNetwork, type LocalNetworkHandle } from '../helpers/localNetwork.js'
 import { connectClient, setupAuthorizedHolder, setupIssuer, testEnv } from '../helpers/fixtures.js'
 
-const LSF_MPT_LOCKED = 0x00000001
 
 describe('freeze and clawback', () => {
   let network: LocalNetworkHandle
@@ -26,31 +25,27 @@ describe('freeze and clawback', () => {
       const holder = await setupAuthorizedHolder(client, netCfg, mptIssuanceId)
       const otherHolder = await setupAuthorizedHolder(client, netCfg, mptIssuanceId)
 
-      assertTesSuccess(
-        await submitMultisigned(client, buildMptPaymentTx(issuer.address, holder.address, mptIssuanceId, '1000'), issuer.signers.slice(0, issuer.quorum)),
-        'mint to holder',
-      )
+      await submitMultisigned(client, buildMptPaymentTx(issuer.address, holder.address, mptIssuanceId, '1000'), issuer.signers.slice(0, issuer.quorum))
 
-      const lockResult = await submitMultisigned(client, buildMptLockTx(issuer.address, mptIssuanceId, true, holder.address), issuer.signers.slice(0, issuer.quorum))
-      assertTesSuccess(lockResult, 'MPTokenIssuanceSet lock')
+      await submitMultisigned(client, buildMptLockTx(issuer.address, mptIssuanceId, true, holder.address), issuer.signers.slice(0, issuer.quorum))
 
-      const lockedMpt = await client.request({ command: 'account_objects', account: holder.address, type: 'mptoken' })
-      const lockedFlags = (lockedMpt.result.account_objects[0] as { Flags?: number }).Flags ?? 0
-      expect(lockedFlags & LSF_MPT_LOCKED).not.toBe(0)
+      const lockedMpt = await client.command.accountObjects({ account: holder.address, type: 'mptoken' })
+      const lockedFlags = lockedMpt.result.account_objects[0]?.Flags ?? 0
+      expect(lockedFlags & MPTokenFlags.lsfMPTLocked).not.toBe(0)
 
       // A locked holder's balance can't be transferred elsewhere. `holder` is a
       // plain (non-multisig) wallet, so it signs with its own regular key.
       const blockedTransferTx = await client.autofill(buildMptPaymentTx(holder.address, otherHolder.address, mptIssuanceId, '100'))
       const signedBlockedTransfer = holder.sign(blockedTransferTx)
-      const blockedTransferResult = await submitAndNormalizeFailures(client, signedBlockedTransfer.tx_blob)
-      expect(getTransactionResult(blockedTransferResult)).not.toBe('tesSUCCESS')
+      const blockedTransferResult = await client.trySubmitAndWait(signedBlockedTransfer.tx_blob)
+      expect(blockedTransferResult.ok).toBe(false)
+      if (!blockedTransferResult.ok) expect(blockedTransferResult.error).toMatchObject({ engineResult: 'tecLOCKED' })
 
-      const unlockResult = await submitMultisigned(client, buildMptLockTx(issuer.address, mptIssuanceId, false, holder.address), issuer.signers.slice(0, issuer.quorum))
-      assertTesSuccess(unlockResult, 'MPTokenIssuanceSet unlock')
+      await submitMultisigned(client, buildMptLockTx(issuer.address, mptIssuanceId, false, holder.address), issuer.signers.slice(0, issuer.quorum))
 
-      const unlockedMpt = await client.request({ command: 'account_objects', account: holder.address, type: 'mptoken' })
-      const unlockedFlags = (unlockedMpt.result.account_objects[0] as { Flags?: number }).Flags ?? 0
-      expect(unlockedFlags & LSF_MPT_LOCKED).toBe(0)
+      const unlockedMpt = await client.command.accountObjects({ account: holder.address, type: 'mptoken' })
+      const unlockedFlags = unlockedMpt.result.account_objects[0]?.Flags ?? 0
+      expect(unlockedFlags & MPTokenFlags.lsfMPTLocked).toBe(0)
     } finally {
       await client.disconnect()
     }
@@ -63,23 +58,19 @@ describe('freeze and clawback', () => {
       const { issuer, mptIssuanceId } = await setupIssuer(client, netCfg, env)
       const holder = await setupAuthorizedHolder(client, netCfg, mptIssuanceId)
 
-      assertTesSuccess(
-        await submitMultisigned(client, buildMptPaymentTx(issuer.address, holder.address, mptIssuanceId, '1000'), issuer.signers.slice(0, issuer.quorum)),
-        'mint to holder',
-      )
+      await submitMultisigned(client, buildMptPaymentTx(issuer.address, holder.address, mptIssuanceId, '1000'), issuer.signers.slice(0, issuer.quorum))
 
-      const clawbackResult = await submitMultisigned(
+      await submitMultisigned(
         client,
         buildClawbackTx(issuer.address, mptIssuanceId, holder.address, '300'),
         issuer.signers.slice(0, issuer.quorum),
       )
-      assertTesSuccess(clawbackResult, 'Clawback')
 
-      const holderMpt = await client.request({ command: 'account_objects', account: holder.address, type: 'mptoken' })
-      expect((holderMpt.result.account_objects[0] as { MPTAmount?: string }).MPTAmount).toBe('700')
+      const holderMpt = await client.command.accountObjects({ account: holder.address, type: 'mptoken' })
+      expect(holderMpt.result.account_objects[0]?.MPTAmount).toBe('700')
 
-      const issuance = await client.request({ command: 'ledger_entry', mpt_issuance: mptIssuanceId })
-      expect((issuance.result.node as { OutstandingAmount?: string }).OutstandingAmount).toBe('700')
+      const issuance = await client.command.ledgerEntry({ mpt_issuance: mptIssuanceId })
+      expect(issuance.result.node.OutstandingAmount).toBe('700')
     } finally {
       await client.disconnect()
     }
