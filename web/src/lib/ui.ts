@@ -6,7 +6,7 @@ import QRCode from 'qrcode'
 import { brand, type KeySet } from '../brand'
 import { formatEuro, type ContractNote } from './dealing'
 import { esc } from './format'
-import { problemCopy, type ProblemStatus } from './outcome'
+import { problemCopy, type ProblemOptions, type ProblemStatus } from './outcome'
 import type { ReadinessNotice } from './readiness'
 import { ROLE_WITH_ARTICLE, waitingFor, type RoleKind, type Seat } from './role'
 import { formatUnits } from './units'
@@ -154,8 +154,8 @@ export async function renderHandoff(container: HTMLElement, opts: HandoffOptions
  * without going through. It never shows the past-tense result line, because
  * nothing happened; `proposal` is the present-tense sentence, for reference.
  */
-export function problemPanelHtml(status: ProblemStatus, proposal: string, actionsHtml: string): string {
-  const copy = problemCopy(status)
+export function problemPanelHtml(status: ProblemStatus, proposal: string, actionsHtml: string, opts: ProblemOptions = {}): string {
+  const copy = problemCopy(status, opts)
   const hash = status.status === 'unknown' ? undefined : status.hash
   const explorer = hash
     ? `<a class="btn btn-secondary" href="${esc(`${TESTNET_EXPLORER_BASE}/transactions/${hash}`)}" target="_blank" rel="noopener noreferrer">View on testnet explorer ↗</a>`

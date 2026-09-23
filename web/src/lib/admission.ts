@@ -1,5 +1,7 @@
 import type { TextMemo } from 'xrpl'
-import type { IssuanceTransaction } from './xrplClient'
+import { shortAddress } from './format'
+import type { ReadinessNotice } from './readiness'
+import type { IssuanceTransaction, MptHolding } from './xrplClient'
 
 /**
  * Holder admission under RequireAuth. An investor's account asks to hold
@@ -107,4 +109,43 @@ export function suggestAdmissionRef(admissions: Admission[]): string {
     .map(Number)
   const next = (numbers.length > 0 ? Math.max(...numbers) : 0) + 1
   return `ADM-${String(next).padStart(4, '0')}`
+}
+
+/**
+ * Whether the ledger would accept an admission of this account now:
+ * `ready` when it has asked (it has a holding) and isn't admitted yet. The
+ * co-signer's GhostSig submits without a preflight, so an admission the
+ * ledger rejects still spends its fee and sequence.
+ */
+export type AdmissionState = 'ready' | 'no-holding' | 'already-admitted' | 'not-required'
+
+export function admissionState(holding: Pick<MptHolding, 'hasHolding' | 'admitted'>, requireAuth: boolean): AdmissionState {
+  if (!requireAuth) return 'not-required'
+  if (!holding.hasHolding) return 'no-holding'
+  return holding.admitted ? 'already-admitted' : 'ready'
+}
+
+/** Plain copy for an admission that isn't `ready`, as a blocking notice; null when it is. */
+export function admissionNotice(state: AdmissionState, holder: string, ticker: string): ReadinessNotice | null {
+  const who = shortAddress(holder)
+  switch (state) {
+    case 'ready':
+      return null
+    case 'no-holding':
+      return {
+        blocked: true,
+        label: 'No admission request',
+        lines: [
+          `${who} hasn't requested admission: it has no ${ticker} holding on the ledger, so the ledger would reject an admission. The investor connects on the fund overview and requests admission first.`,
+        ],
+      }
+    case 'already-admitted':
+      return { blocked: true, label: 'Already on the register', lines: [`${who} is already admitted. Admitting it again changes nothing.`] }
+    case 'not-required':
+      return {
+        blocked: true,
+        label: 'No admission on this issuance',
+        lines: ["This issuance doesn't set RequireAuth, so any wallet can hold units and the ledger would reject an admission."],
+      }
+  }
 }

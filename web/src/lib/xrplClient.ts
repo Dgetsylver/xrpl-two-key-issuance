@@ -323,6 +323,9 @@ export interface ProposalIdentity {
   TransactionType?: unknown
   Destination?: unknown
   Amount?: unknown
+  /** The account an admission names (MPTokenAuthorize). */
+  Holder?: unknown
+  MPTokenIssuanceID?: unknown
 }
 
 export interface LandedTransaction {
@@ -373,20 +376,24 @@ export async function findTransactionBySequence(account: string, sequence: numbe
 }
 
 function sameAmount(a: unknown, b: unknown): boolean {
+  // An admission carries no amount at all.
+  if (a === undefined || b === undefined) return a === b
   if (typeof a === 'string' || typeof b === 'string') return a === b
   const x = a as { mpt_issuance_id?: unknown; value?: unknown } | undefined
   const y = b as { mpt_issuance_id?: unknown; value?: unknown } | undefined
   return Boolean(x && y) && x!.mpt_issuance_id === y!.mpt_issuance_id && String(x!.value) === String(y!.value)
 }
 
-/** Whether a landed transaction is this proposal: same sender, sequence, type, destination and amount. */
+/** Whether a landed transaction is this proposal: same sender, sequence, type, destination, amount, holder and issuance. */
 export function isSameProposal(landed: Record<string, unknown>, proposal: ProposalIdentity): boolean {
   return (
     landed.Account === proposal.Account &&
     landed.Sequence === proposal.Sequence &&
     landed.TransactionType === proposal.TransactionType &&
     landed.Destination === proposal.Destination &&
-    sameAmount(landed.Amount, proposal.Amount)
+    sameAmount(landed.Amount, proposal.Amount) &&
+    landed.Holder === proposal.Holder &&
+    landed.MPTokenIssuanceID === proposal.MPTokenIssuanceID
   )
 }
 
