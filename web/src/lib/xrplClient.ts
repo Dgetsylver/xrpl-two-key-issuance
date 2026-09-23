@@ -10,6 +10,7 @@ import {
   type MPTokenIssuanceFlagsInterface,
   type TextMemo,
 } from 'xrpl'
+import { admissionRequestsOf, admissionsOf, unadmittedRequests, type AdmissionRequest } from './admission'
 import { suggestNextDealingDay } from './dealing'
 import { describeReadiness, type ReadinessNotice } from './readiness'
 
@@ -73,11 +74,11 @@ export async function checkTransfer(
   account: string,
   destination: string,
   mptIssuanceId: string,
-  opts: { source: string; amount?: string },
+  opts: { source: string; amount?: string; requireAuth?: boolean },
 ): Promise<ReadinessNotice | null> {
   const client = await getClient()
   const readiness = await client.getMptTransferReadiness({ account, destination, mptIssuanceId, amount: opts.amount })
-  return describeReadiness(readiness, { destination, source: opts.source })
+  return describeReadiness(readiness, { destination, source: opts.source, requireAuth: opts.requireAuth })
 }
 
 /** Returns the account's XRP balance in drops, or `undefined` if it isn't funded/activated yet. */
@@ -254,6 +255,27 @@ export async function getIssuanceTransactions(account: string, mptIssuanceId: st
     if (marker == null) break
   }
   return found
+}
+
+/**
+ * Admission requests still waiting, newest first: requests in the issuer's
+ * history with no admission after them (at most `max`, skipping `exclude`),
+ * each confirmed on the ledger as a holding the Register hasn't admitted.
+ * A candidate whose holding can't be read is left out.
+ */
+export async function getPendingRequests(
+  history: IssuanceTransaction[],
+  issuer: string,
+  mptIssuanceId: string,
+  exclude: string[],
+  max = 5,
+): Promise<AdmissionRequest[]> {
+  const candidates = unadmittedRequests(admissionRequestsOf(history, issuer), admissionsOf(history, issuer), exclude).slice(0, max)
+  const holdings = await Promise.allSettled(candidates.map((request) => getMptHolding(request.account, mptIssuanceId)))
+  return candidates.filter((_, i) => {
+    const holding = holdings[i]
+    return holding?.status === 'fulfilled' && holding.value.hasHolding && !holding.value.admitted
+  })
 }
 
 /** The dealing-day label an issue carries (memo type `mint-period`), if any. */

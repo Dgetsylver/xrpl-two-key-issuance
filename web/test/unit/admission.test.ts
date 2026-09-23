@@ -5,6 +5,7 @@ import {
   admissionRequestsOf,
   admissionsOf,
   admittedOn,
+  investorPicks,
   kycReferenceOf,
   suggestAdmissionRef,
   unadmittedRequests,
@@ -138,5 +139,43 @@ describe('ADMIT rows in the register ledger', () => {
       admissions: admissionsOf([authorize(REGISTER, 11, { holder: INVESTOR, memos: kyc('ADM-0001') })], REGISTER),
     })
     expect(rows.map((row) => row.stamp)).toEqual(['DELIVER', 'ADMIT', 'ISSUE'])
+  })
+})
+
+describe('Deliver units investor list', () => {
+  const now = new Date(2026, 8, 24)
+  const delivery = (destination: string, day: number) => ({ destination, amountRaw: '1000', ledgerIndex: day, date: new Date(2026, 8, day), memos: [] })
+  const admission = (holder: string, ledgerIndex: number) => ({ holder, memos: [], ledgerIndex })
+  const request = (account: string, ledgerIndex: number) => ({ account, ledgerIndex })
+
+  it('lists accounts on the register first, then those awaiting admission, under RequireAuth', () => {
+    const picks = investorPicks({
+      deliveries: [delivery(INVESTOR, 20), delivery(REGISTER, 19)],
+      admissions: [admission(OTHER, 18), admission(INVESTOR, 10), admission(DESK, 2)],
+      pending: [request('rwwCKTRApRm4pWeqGmsNtaKSoooNUxdMVt', 21)],
+      exclude: [REGISTER, DESK],
+      requireAuth: true,
+      now,
+    })
+    expect(picks).toEqual([
+      { address: INVESTOR, status: 'Admitted', pending: false },
+      { address: OTHER, status: 'Admitted', pending: false },
+      { address: 'rwwCKTRApRm4pWeqGmsNtaKSoooNUxdMVt', status: 'Awaiting admission', pending: true },
+    ])
+  })
+
+  it('keeps the Phase 1 list of past deliveries on an open issuance', () => {
+    const picks = investorPicks({
+      deliveries: [delivery(INVESTOR, 20), delivery(INVESTOR, 12), delivery(OTHER, 3)],
+      admissions: [admission(OTHER, 18)],
+      pending: [request('rwwCKTRApRm4pWeqGmsNtaKSoooNUxdMVt', 21)],
+      exclude: [REGISTER, DESK],
+      requireAuth: false,
+      now,
+    })
+    expect(picks).toEqual([
+      { address: INVESTOR, status: 'Last delivery 20 Sep', pending: false },
+      { address: OTHER, status: 'Last delivery 03 Sep', pending: false },
+    ])
   })
 })

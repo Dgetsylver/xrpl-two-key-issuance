@@ -11,6 +11,8 @@ export interface ReadinessContext {
   destination: string
   /** How to name the sending account in a sentence: "The Dealing Desk", "Your account". */
   source: string
+  /** The issuance requires admission (RequireAuth), so a holding alone isn't enough to receive units. */
+  requireAuth?: boolean
 }
 
 export interface ReadinessNotice {
@@ -29,16 +31,26 @@ function mapCheck(message: string, ctx: ReadinessContext): Mapped {
   const destination = shortAddress(ctx.destination)
   switch (message) {
     case 'Destination has not authorized a holding for this MPT.':
+      if (ctx.requireAuth) {
+        return {
+          label: 'Not on the register',
+          text: `${destination} hasn't requested admission yet, so it can't hold units. The investor requests it on the fund overview, then a Register keyholder admits it from Admit investor.`,
+        }
+      }
       return {
         label: "Can't hold units yet",
         text: `${destination} hasn't set up a holding yet, so it can't receive units. It needs to connect and self-authorise on the fund overview first.`,
       }
     case 'Destination has not been authorized by the issuer.':
-      return { label: "Can't hold units yet", text: `${destination} hasn't been authorised by the Register yet, so it can't receive units.` }
+      // The SDK only reports this under RequireAuth: the account asked, but the Register hasn't admitted it.
+      return {
+        label: 'Not on the register',
+        text: `${destination} hasn't been admitted yet, so it can't hold units. A Register keyholder needs to admit it first, from Admit investor.`,
+      }
     case 'Source has not authorized a holding for this MPT.':
       return { label: 'No holding to send from', text: `${ctx.source} has no holding of these units.` }
     case 'Source has not been authorized by the issuer.':
-      return { label: 'No holding to send from', text: `${ctx.source} hasn't been authorised by the Register.` }
+      return { label: 'Not on the register', text: `${ctx.source} hasn't been admitted to the register, so it can't send units.` }
     case 'The issuance or a holder is locked for this transfer.':
       return { label: 'Units are locked', text: "Units can't move right now: dealing is suspended, or a stop-transfer is in place on one of the holdings." }
     case 'This issuance does not permit transfers between holders.':

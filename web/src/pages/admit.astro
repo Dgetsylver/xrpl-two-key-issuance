@@ -71,6 +71,7 @@ import Layout from '../layouts/Layout.astro'
   import {
     getIssuanceTransactions,
     getMptHolding,
+    getPendingRequests,
     getRequireAuth,
     watchProposal,
     TESTNET_EXPLORER_BASE,
@@ -82,7 +83,6 @@ import Layout from '../layouts/Layout.astro'
     admissionState,
     admissionsOf,
     suggestAdmissionRef,
-    unadmittedRequests,
     type Admission,
     type AdmissionRequest,
   } from '../lib/admission'
@@ -325,14 +325,8 @@ import Layout from '../layouts/Layout.astro'
     try {
       const history = await getIssuanceTransactions(issuer.address, mptIssuanceId)
       admissions = admissionsOf(history, issuer.address)
-      const all = admissionRequestsOf(history, issuer.address)
-      requests = new Map(all.map((request) => [request.account, request]))
-      const candidates = unadmittedRequests(all, admissions, [governance.address]).slice(0, MAX_PICKS)
-      const holdings = await Promise.allSettled(candidates.map((request) => getMptHolding(request.account, mptIssuanceId)))
-      const pending = candidates.filter((_, i) => {
-        const holding = holdings[i]
-        return holding?.status === 'fulfilled' && admissionState(holding.value, requireAuth) === 'ready'
-      })
+      requests = new Map(admissionRequestsOf(history, issuer.address).map((request) => [request.account, request]))
+      const pending = await getPendingRequests(history, issuer.address, mptIssuanceId, [governance.address], MAX_PICKS)
       renderPicks(pending)
       // Land on the newest request, as the handoff's admission request card does.
       const newest = pending[0]

@@ -1,7 +1,7 @@
 import type { TextMemo } from 'xrpl'
-import { shortAddress } from './format'
+import { formatShortDate, shortAddress } from './format'
 import type { ReadinessNotice } from './readiness'
-import type { IssuanceTransaction, MptHolding } from './xrplClient'
+import type { IssuanceTransaction, MptHolding, MptPayment } from './xrplClient'
 
 /**
  * Holder admission under RequireAuth. An investor's account asks to hold
@@ -148,4 +148,55 @@ export function admissionNotice(state: AdmissionState, holder: string, ticker: s
         lines: ["This issuance doesn't set RequireAuth, so any wallet can hold units and the ledger would reject an admission."],
       }
   }
+}
+
+export interface InvestorPick {
+  address: string
+  /** Right-hand status: 'Admitted' or 'Awaiting admission' under RequireAuth, else the last delivery. */
+  status: string
+  pending: boolean
+}
+
+export interface InvestorPicksInput {
+  /** Desk deliveries, newest first. */
+  deliveries: MptPayment[]
+  /** Register admissions, newest first. */
+  admissions: Admission[]
+  /** Requests confirmed as still awaiting admission, newest first. */
+  pending: AdmissionRequest[]
+  /** Accounts never listed (the Register and the Desk). */
+  exclude: string[]
+  requireAuth: boolean
+  now?: Date
+}
+
+/**
+ * The Deliver units investor list: accounts on the register first (the
+ * newest deliveries, then admissions), then accounts awaiting admission,
+ * which the Desk can't deliver to yet. On an open issuance it's the Phase 1
+ * list of past delivery destinations.
+ */
+export function investorPicks(input: InvestorPicksInput, limits: { known: number; pending: number } = { known: 5, pending: 3 }): InvestorPick[] {
+  const seen = new Set(input.exclude)
+  const known: InvestorPick[] = []
+  const add = (address: string, status: string) => {
+    if (seen.has(address) || known.length >= limits.known) return
+    seen.add(address)
+    known.push({ address, status, pending: false })
+  }
+  for (const payment of input.deliveries) {
+    const status = input.requireAuth
+      ? 'Admitted'
+      : payment.date
+        ? `Last delivery ${formatShortDate(payment.date, input.now)}`
+        : 'Delivered before'
+    add(payment.destination, status)
+  }
+  if (!input.requireAuth) return known
+  for (const admission of input.admissions) add(admission.holder, 'Admitted')
+  const pending = input.pending
+    .filter((request) => !seen.has(request.account))
+    .slice(0, limits.pending)
+    .map((request) => ({ address: request.account, status: 'Awaiting admission', pending: true }))
+  return [...known, ...pending]
 }

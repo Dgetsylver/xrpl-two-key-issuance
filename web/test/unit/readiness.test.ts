@@ -69,3 +69,49 @@ describe('transfer readiness in plain copy', () => {
     expect(describeReadiness({ status: 'eligible', checks: [] }, { destination: INVESTOR, source: 'x' })).toBeNull()
   })
 })
+
+describe('Deliver units under RequireAuth', () => {
+  /** Ledger flags lsfMPTRequireAuth | lsfMPTCanTransfer; holder flag lsfMPTAuthorized. */
+  const REQUIRE_AUTH_ISSUANCE = 0x00000004 | LSF_MPT_CAN_TRANSFER
+  const LSF_MPT_AUTHORIZED = 0x00000002
+  const PENDING = 'rwwCKTRApRm4pWeqGmsNtaKSoooNUxdMVt'
+
+  /** The Desk (admitted) holds `deskUnits`; the investor's MPToken has `investorFlags`, or none. */
+  function mockRequireAuthLedger(deskUnits: string, investorFlags: number | undefined) {
+    return vi.spyOn(Client.prototype, 'request').mockImplementation((async (req: Record<string, unknown>) => {
+      if (req.command === 'ledger') return { result: { ledger_index: 100 } }
+      if (req.command === 'ledger_entry' && req.mpt_issuance) {
+        return { result: { node: { Issuer: REGISTER, Flags: REQUIRE_AUTH_ISSUANCE, OutstandingAmount: deskUnits } } }
+      }
+      if (req.command === 'ledger_entry' && req.mptoken) {
+        const { account } = req.mptoken as { account: string }
+        if (account === DESK) return { result: { node: { Account: DESK, MPTAmount: deskUnits, Flags: LSF_MPT_AUTHORIZED } } }
+        if (account === PENDING && investorFlags !== undefined) return { result: { node: { Account: PENDING, MPTAmount: '0', Flags: investorFlags } } }
+        throw new RippledError('Not found', { error: 'entryNotFound' })
+      }
+      throw new Error(`unexpected ${String(req.command)}`)
+    }) as never)
+  }
+
+  it("blocks a pending destination as 'Not on the register', in the handoff's words", async () => {
+    mockRequireAuthLedger('25000000', 0)
+    const notice = await checkTransfer(DESK, PENDING, ISSUANCE, { source: 'The Dealing Desk', amount: '25000000', requireAuth: true })
+    expect(notice).toEqual({
+      blocked: true,
+      label: 'Not on the register',
+      lines: ["rwwCKT…dMVt hasn't been admitted yet, so it can't hold units. A Register keyholder needs to admit it first, from Admit investor."],
+    })
+  })
+
+  it('lets an admitted destination through', async () => {
+    mockRequireAuthLedger('25000000', LSF_MPT_AUTHORIZED)
+    expect(await checkTransfer(DESK, PENDING, ISSUANCE, { source: 'The Dealing Desk', amount: '25000000', requireAuth: true })).toBeNull()
+  })
+
+  it('points a destination with no holding at the admission request', async () => {
+    mockRequireAuthLedger('25000000', undefined)
+    const notice = await checkTransfer(DESK, PENDING, ISSUANCE, { source: 'The Dealing Desk', requireAuth: true })
+    expect(notice).toMatchObject({ blocked: true, label: 'Not on the register' })
+    expect(notice?.lines[0]).toMatch(/hasn't requested admission yet/)
+  })
+})
