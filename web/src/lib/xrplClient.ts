@@ -11,6 +11,7 @@ import {
   type TextMemo,
 } from 'xrpl'
 import { suggestNextDealingDay } from './dealing'
+import { describeReadiness, type ReadinessNotice } from './readiness'
 
 // GHOSTSIG only understands XRPL testnet/devnet/mainnet, so this demo is
 // pinned to the public Testnet -- the same network `XRPL_NETWORK=testnet`
@@ -58,20 +59,20 @@ export async function getMptHolding(address: string, mptIssuanceId: string): Pro
   }
 }
 
-/** Advisory checks for this transfer; failed reads remain visible as errors. */
-export async function destinationReadinessWarning(
+/**
+ * Advisory checks for this transfer, in plain copy (null when every check
+ * passed). Pass `amount` to check the sender's balance too. Failed reads
+ * throw, so they stay visible as errors rather than passing.
+ */
+export async function checkTransfer(
   account: string,
   destination: string,
   mptIssuanceId: string,
-  amount?: string,
-): Promise<string | null> {
+  opts: { source: string; amount?: string },
+): Promise<ReadinessNotice | null> {
   const client = await getClient()
-  const readiness = await client.getMptTransferReadiness({ account, destination, mptIssuanceId, amount })
-  if (readiness.status === 'eligible') return null
-  return readiness.checks
-    .filter((check) => check.status !== 'pass')
-    .map((check) => check.message)
-    .join(' ')
+  const readiness = await client.getMptTransferReadiness({ account, destination, mptIssuanceId, amount: opts.amount })
+  return describeReadiness(readiness, { destination, source: opts.source })
 }
 
 /** Returns the account's XRP balance in drops, or `undefined` if it isn't funded/activated yet. */

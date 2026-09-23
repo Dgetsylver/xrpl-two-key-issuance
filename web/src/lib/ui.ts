@@ -7,6 +7,7 @@ import { brand, type KeySet } from '../brand'
 import { formatEuro, type ContractNote } from './dealing'
 import { esc } from './format'
 import { problemCopy, type ProblemStatus } from './outcome'
+import type { ReadinessNotice } from './readiness'
 import { ROLE_WITH_ARTICLE, waitingFor, type RoleKind, type Seat } from './role'
 import { formatUnits } from './units'
 import { withBase } from './paths'
@@ -160,4 +161,13 @@ export function problemPanelHtml(status: ProblemStatus, proposal: string, action
     <p class="body-2">${esc(copy.detail)}</p>
     <p class="small-muted">The proposal was: ${sentenceHtml(proposal)}</p>
     <div class="row-wrap">${actionsHtml}${explorer}</div>`
+}
+
+/** The transfer-readiness notice as an alert panel. `extraHtml` goes at the end (e.g. a "Check again" button). */
+export function readinessHtml(notice: ReadinessNotice, extraHtml = ''): string {
+  return `<div class="panel panel-alert" role="status">
+    <span class="panel-label">${esc(notice.label)}</span>
+    ${notice.lines.map((line) => `<span>${sentenceHtml(line)}</span>`).join('')}
+    ${extraHtml}
+  </div>`
 }

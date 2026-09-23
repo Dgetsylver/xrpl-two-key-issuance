@@ -193,7 +193,7 @@ const seatChips = (keySet: 'register' | 'desk') => brand.seats[keySet]
     getOutgoingMptPayments,
     getXrpBalanceDrops,
     isMasterKeyDisabled,
-    destinationReadinessWarning,
+    checkTransfer,
     mintPeriodOf,
     TESTNET_EXPLORER_BASE,
     type MptPayment,
@@ -203,7 +203,7 @@ const seatChips = (keySet: 'register' | 'desk') => brand.seats[keySet]
   import { esc, formatDate, formatShortDate, joinList } from '../lib/format'
   import { numberWord, seatFor, seatsOf } from '../lib/role'
   import { formatUnits, parseUnits } from '../lib/units'
-  import { statusHtml } from '../lib/ui'
+  import { readinessHtml, statusHtml } from '../lib/ui'
   import { withBase } from '../lib/paths'
   import { getStoredAddress } from '../lib/session'
 
@@ -408,7 +408,7 @@ const seatChips = (keySet: 'register' | 'desk') => brand.seats[keySet]
     accountBody.innerHTML = `
       <p class="body-2">Your account doesn't hold ${esc(ticker)} yet.</p>
       <span class="address small-muted">${esc(address)}</span>
-      <div><button type="button" class="btn btn-primary" id="authorize-button">Self-authorize to hold ${esc(ticker)}</button></div>
+      <div><button type="button" class="btn btn-primary" id="authorize-button">Self-authorise to hold ${esc(ticker)}</button></div>
       <p class="small-muted">Open to any wallet for this demo; a real share class admits investors (RequireAuth).</p>
       <div id="authorize-result"></div>`
     const button = document.getElementById('authorize-button') as HTMLButtonElement
@@ -418,7 +418,7 @@ const seatChips = (keySet: 'register' | 'desk') => brand.seats[keySet]
       try {
         const tx = (await getClient()).forAccount(address).tx.mpTokenAuthorize({ MPTokenIssuanceID: mptIssuanceId }).toJSON()
         const signed = await ghostsigSign({ payload: { ...tx }, address, submit: true })
-        result.innerHTML = `<div class="status success">Authorized. <a href="${esc(explorerTx(signed.hash))}" target="_blank" rel="noopener noreferrer">View on testnet explorer ↗</a></div>`
+        result.innerHTML = `<div class="status success">Authorised. <a href="${esc(explorerTx(signed.hash))}" target="_blank" rel="noopener noreferrer">View on testnet explorer ↗</a></div>`
         window.setTimeout(() => {
           if (getStoredAddress() === address) void renderAccount(address)
         }, 4000)
@@ -466,8 +466,8 @@ const seatChips = (keySet: 'register' | 'desk') => brand.seats[keySet]
       warning.innerHTML = ''
       if (!to) return
       try {
-        const message = await destinationReadinessWarning(address, to, mptIssuanceId)
-        if (message) warning.innerHTML = `<div class="panel panel-alert"><span class="panel-label">Check the destination</span><span>${esc(message)}</span></div>`
+        const notice = await checkTransfer(address, to, mptIssuanceId, { source: 'Your account' })
+        if (notice) warning.innerHTML = readinessHtml(notice)
       } catch {
         warning.innerHTML = statusHtml('error', 'Could not check the destination. Try again before signing.')
       }

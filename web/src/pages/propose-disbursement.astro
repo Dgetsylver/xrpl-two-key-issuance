@@ -57,7 +57,7 @@ import Layout from '../layouts/Layout.astro'
   import { signCeremonyPayload } from '../lib/ceremony'
   import { describeProposal } from '../lib/preview'
   import {
-    destinationReadinessWarning,
+    checkTransfer,
     getMptHolding,
     getOutgoingMptPayments,
     mintPeriodOf,
@@ -69,7 +69,7 @@ import Layout from '../layouts/Layout.astro'
   import { esc, formatShortDate, shortAddress } from '../lib/format'
   import { seatOn, seatsOf, signerRole } from '../lib/role'
   import { formatUnits, parseUnits } from '../lib/units'
-  import { nonSignerHtml, problemPanelHtml, renderHandoff, sentenceHtml } from '../lib/ui'
+  import { nonSignerHtml, problemPanelHtml, readinessHtml, renderHandoff, sentenceHtml } from '../lib/ui'
   import type { ProblemStatus } from '../lib/outcome'
 
   const $ = (id: string) => document.getElementById(id)!
@@ -84,6 +84,9 @@ import Layout from '../layouts/Layout.astro'
   let connectedAddress: string | undefined
   let stopWatching: (() => void) | undefined
   let inFlight = false
+  /** Set while the readiness check says the ledger would reject this delivery; the sign button stays disabled. */
+  let destinationBlocked = false
+  let checkSeq = 0
 
   async function main() {
     const config = await loadPublicConfig()
@@ -141,29 +144,64 @@ import Layout from '../layouts/Layout.astro'
       }
     }
 
+    function setBlocked(blocked: boolean) {
+      destinationBlocked = blocked
+      deliverButton.disabled = blocked
+    }
+
+    /** The units typed so far as a raw amount, if they parse, so the check covers Desk inventory too. */
+    function typedAmount(): string | undefined {
+      try {
+        return parseUnits(unitsInput.value)
+      } catch {
+        return undefined
+      }
+    }
+
+    /**
+     * Checks the destination (and, once units are entered, Desk inventory).
+     * A blocked result disables the sign button: the ledger would reject the
+     * delivery as things stand. A failed read leaves it enabled.
+     */
     async function checkDestination() {
+      const seq = ++checkSeq
       const destination = destinationInput.value.trim()
       warning.innerHTML = ''
+      setBlocked(false)
       if (!destination) return
       if (!isValidClassicAddress(destination)) {
         warning.innerHTML = `<div class="status error">That isn't a valid XRPL address.</div>`
         return
       }
       try {
-        const message = await destinationReadinessWarning(governance.address, destination, mptIssuanceId)
-        if (message && destinationInput.value.trim() === destination) {
-          warning.innerHTML = `<div class="panel panel-alert"><span class="panel-label">Check the destination</span><span>${esc(message)}</span></div>`
+        const notice = await checkTransfer(governance.address, destination, mptIssuanceId, {
+          source: 'The Dealing Desk',
+          amount: typedAmount(),
+        })
+        if (seq !== checkSeq) return
+        if (notice) {
+          warning.innerHTML = readinessHtml(notice, '<div><button type="button" class="link-button" data-recheck>Check again</button></div>')
+          warning.querySelector('[data-recheck]')?.addEventListener('click', () => void checkDestination())
+          setBlocked(notice.blocked)
         }
       } catch {
+        if (seq !== checkSeq) return
         warning.innerHTML = `<div class="status">Could not check the destination. Try again before signing.</div>`
       }
     }
 
     destinationInput.addEventListener('input', () => {
+      // A new address needs a new check (on blur); drop the old result meanwhile.
+      checkSeq++
+      warning.innerHTML = ''
+      setBlocked(false)
       const value = destinationInput.value.trim()
       for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="investor"]')) radio.checked = radio.value === value
     })
     destinationInput.addEventListener('blur', () => void checkDestination())
+    unitsInput.addEventListener('change', () => {
+      if (destinationInput.value.trim()) void checkDestination()
+    })
 
     async function showDelivered(doneSentence: string) {
       stopWatching?.()
@@ -182,6 +220,7 @@ import Layout from '../layouts/Layout.astro'
         inFlight = false
         form.reset()
         warning.innerHTML = ''
+        setBlocked(false)
         refInput.value = suggestOrderRef()
         form.hidden = !connectedAddress || !seatOn(config, 'desk', connectedAddress)
       })
@@ -221,6 +260,7 @@ import Layout from '../layouts/Layout.astro'
         return
       }
       await checkDestination()
+      if (destinationBlocked) return
       deliverButton.disabled = true
       deliverButton.classList.add('is-waiting')
       deliverButton.textContent = 'Waiting for your passkey…'
@@ -263,7 +303,7 @@ import Layout from '../layouts/Layout.astro'
       } catch (err) {
         pageError.textContent = err instanceof Error ? err.message : String(err)
       } finally {
-        deliverButton.disabled = false
+        deliverButton.disabled = destinationBlocked
         deliverButton.classList.remove('is-waiting')
         deliverButton.textContent = 'Sign delivery with passkey'
       }

@@ -92,12 +92,12 @@ import Layout from '../layouts/Layout.astro'
   import { onConnectionChange } from '../lib/connect'
   import { signCeremonyPayload } from '../lib/ceremony'
   import { describeProposal, type ProposalPreview } from '../lib/preview'
-  import { destinationReadinessWarning, watchProposal, TESTNET_EXPLORER_BASE } from '../lib/xrplClient'
+  import { checkTransfer, watchProposal, TESTNET_EXPLORER_BASE } from '../lib/xrplClient'
   import { urlParamToBlob } from '../lib/blob'
   import { brand } from '../brand'
   import { esc, shortAddress } from '../lib/format'
   import { ROLE_WITH_ARTICLE, keySetAccount, seatOn, seatsOf, signerRole } from '../lib/role'
-  import { chipsHtml, contractNoteHtml, keyMeterHtml, problemPanelHtml, renderHandoff, sentenceHtml } from '../lib/ui'
+  import { chipsHtml, contractNoteHtml, keyMeterHtml, problemPanelHtml, readinessHtml, renderHandoff, sentenceHtml } from '../lib/ui'
   import type { ProblemStatus } from '../lib/outcome'
   import { withBase } from '../lib/paths'
 
@@ -209,9 +209,10 @@ import Layout from '../layouts/Layout.astro'
       warning.innerHTML = ''
       // Units returned to the Register are cancelled; the issuer never holds an MPToken, so skip the check.
       if (proposal.kind === 'unrecognised' || !proposal.destination || proposal.destination === ctx.issuer) return
-      destinationReadinessWarning(proposal.account, proposal.destination, mptIssuanceId)
-        .then((message) => {
-          if (message) warning.innerHTML = `<div class="panel panel-alert"><span class="panel-label">Check the destination</span><span>${esc(message)}</span></div>`
+      const source = proposal.account === ctx.desk ? 'The Dealing Desk' : 'The sending account'
+      checkTransfer(proposal.account, proposal.destination, mptIssuanceId, { source, amount: proposal.amountRaw })
+        .then((notice) => {
+          if (notice) warning.innerHTML = readinessHtml(notice)
         })
         .catch(() => {
           warning.innerHTML = '<div class="status">Could not check the destination. Try again before signing.</div>'
