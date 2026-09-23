@@ -43,7 +43,10 @@ export async function getOutstandingSupplyRaw(mptIssuanceId: string): Promise<st
 }
 
 export interface MptHolding {
-  authorized: boolean
+  /** The account has an MPToken for this issuance: it self-authorised (asked to hold units). */
+  hasHolding: boolean
+  /** The issuer admitted it (`lsfMPTAuthorized`). Only meaningful when the issuance sets RequireAuth. */
+  admitted: boolean
   balanceRaw: string
   locked: boolean
 }
@@ -52,10 +55,12 @@ export interface MptHolding {
 export async function getMptHolding(address: string, mptIssuanceId: string): Promise<MptHolding> {
   const client = await getClient()
   const token = await fetchMPTokenOrUndefined(client, address, mptIssuanceId, 'validated')
+  const flags = token ? parseMPTokenFlags(token.Flags) : undefined
   return {
-    authorized: token !== undefined,
+    hasHolding: token !== undefined,
+    admitted: Boolean(flags?.lsfMPTAuthorized),
     balanceRaw: token?.MPTAmount ?? '0',
-    locked: token ? Boolean(parseMPTokenFlags(token.Flags).lsfMPTLocked) : false,
+    locked: Boolean(flags?.lsfMPTLocked),
   }
 }
 
@@ -102,6 +107,19 @@ export async function getIssuanceState(mptIssuanceId: string): Promise<IssuanceS
   const res = await client.command.ledgerEntry({ mpt_issuance: mptIssuanceId })
   const node = res.result.node as { OutstandingAmount?: string; Flags?: number }
   return { outstandingRaw: node.OutstandingAmount ?? '0', flags: parseMPTokenIssuanceFlags(node.Flags ?? 0) }
+}
+
+/**
+ * Whether the issuance sets RequireAuth, so every holder needs the
+ * Register's admission. Read from the ledger; if that read fails, from the
+ * flags deployment.json published, else false (the open Phase 1 issuance).
+ */
+export async function getRequireAuth(mptIssuanceId: string, publishedFlag: boolean | undefined): Promise<boolean> {
+  try {
+    return Boolean((await getIssuanceState(mptIssuanceId)).flags.lsfMPTRequireAuth)
+  } catch {
+    return publishedFlag ?? false
+  }
 }
 
 /** Whether the account's master key is disabled (so only its signer list can sign for it). */

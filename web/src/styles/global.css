@@ -164,7 +164,8 @@ p {
   background: var(--role-visitor);
 }
 
-.role-dot[data-role='investor'] {
+.role-dot[data-role='investor'],
+.role-dot[data-role='pending'] {
   background: var(--brand-ink);
 }
 
