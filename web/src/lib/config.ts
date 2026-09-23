@@ -23,6 +23,10 @@ export interface PublicTokenConfig {
 export interface PublicDeploymentConfig {
   network: string
   mptIssuanceId?: string
+  /** The issuance's AssetScale. Absent in configs written before it was published. */
+  assetScale?: number
+  /** The issuance's lsfMPT* flags (parse with parseMPTokenIssuanceFlags). Absent in older configs. */
+  flags?: number
   token: PublicTokenConfig
   issuer?: PublicAccountConfig
   governance?: PublicAccountConfig

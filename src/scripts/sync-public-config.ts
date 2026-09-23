@@ -25,6 +25,10 @@ export interface PublicTokenConfig {
 export interface PublicDeploymentConfig {
   network: string
   mptIssuanceId?: string
+  /** The issuance's AssetScale: one displayed unit is 10^assetScale ledger units. */
+  assetScale?: number
+  /** The issuance's lsfMPT* flags (e.g. RequireAuth 0x04, CanLock 0x02, CanTransfer 0x20, CanClawback 0x40). */
+  flags?: number
   token: PublicTokenConfig
   issuer?: PublicAccountConfig
   governance?: PublicAccountConfig
@@ -53,11 +57,16 @@ function toPublicToken(config: TokenMetadataConfig): PublicTokenConfig {
  * from TOKEN_* env vars) that's safe to publish as a static asset for the
  * `web/` frontend. Every `seed` field -- issuer/governance master seeds and
  * per-signer seeds -- is deliberately omitted; only addresses are kept.
+ * `assetScale` and `flags` come from the issuance settings that
+ * `setup:issuer` read back from the ledger; they're left out when the state
+ * has none recorded.
  */
 export function buildPublicConfig(state: DeploymentState, tokenConfig: TokenMetadataConfig): PublicDeploymentConfig {
   return {
     network: state.network,
     mptIssuanceId: state.mptIssuanceId,
+    assetScale: state.issuance?.assetScale,
+    flags: state.issuance?.flags,
     token: toPublicToken(tokenConfig),
     issuer: state.issuer ? toPublicAccount(state.issuer) : undefined,
     governance: state.governance ? toPublicAccount(state.governance) : undefined,
@@ -86,6 +95,11 @@ async function main(): Promise<void> {
   }
   if (!state.governance) {
     console.log('Warning: no governance account in .deployment.json yet. Run `npm run setup:governance` first for a complete config.')
+  }
+  if (state.mptIssuanceId && !state.issuance) {
+    console.log(
+      'Warning: no issuance settings (flags, AssetScale) in .deployment.json yet, so they are left out. Rerun `npm run setup:issuer` to read them from the ledger.',
+    )
   }
 
   const publicConfig = buildPublicConfig(state, tokenConfig)
