@@ -53,6 +53,13 @@ describe('next dealing day', () => {
     expect(suggestNextDealingDay(['2026-12'], SEPT_2026)).toBe('2027-01')
   })
 
+  it('never suggests a past month after a gap, including across a year change', () => {
+    expect(suggestNextDealingDay(['2026-03'], new Date(2026, 8, 23))).toBe('2026-09')
+    expect(suggestNextDealingDay(['2026-10'], new Date(2027, 1, 5))).toBe('2027-02')
+    expect(suggestNextDealingDay(['2026-08'], SEPT_2026)).toBe('2026-09')
+    expect(suggestNextDealingDay(['2026-09'], SEPT_2026)).toBe('2026-10')
+  })
+
   it('falls back to the current month when nothing is on record', () => {
     expect(suggestNextDealingDay([], SEPT_2026)).toBe('2026-09')
   })

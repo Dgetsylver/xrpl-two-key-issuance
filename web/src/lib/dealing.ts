@@ -42,16 +42,24 @@ export function currentDealingDay(now: Date = new Date()): string {
   return formatDealingDay({ year: now.getFullYear(), month: now.getMonth() + 1 })
 }
 
+function monthIndex({ year, month }: DealingMonth): number {
+  return year * 12 + month
+}
+
 /**
  * The dealing day to propose next: the month after the latest dealing day on
- * record, or the current month when none is on record. Labels that name no
- * month (a bare year from before dealing days) don't count.
+ * record, but never earlier than the current month (dealing days run on
+ * their real dates, never backdated). The current month when none is on
+ * record. Labels that name no month (a bare year from before dealing days)
+ * don't count.
  */
 export function suggestNextDealingDay(periods: string[], now: Date = new Date()): string {
+  const current: DealingMonth = { year: now.getFullYear(), month: now.getMonth() + 1 }
   const months = periods.map(parseDealingMonth).filter((m): m is DealingMonth => m !== undefined)
-  if (months.length === 0) return currentDealingDay(now)
-  const latest = months.reduce((a, b) => (b.year * 12 + b.month > a.year * 12 + a.month ? b : a))
-  return formatDealingDay(nextMonth(latest))
+  if (months.length === 0) return formatDealingDay(current)
+  const latest = months.reduce((a, b) => (monthIndex(b) > monthIndex(a) ? b : a))
+  const after = nextMonth(latest)
+  return formatDealingDay(monthIndex(after) >= monthIndex(current) ? after : current)
 }
 
 /** "October", for a `YYYY-MM` day. */
