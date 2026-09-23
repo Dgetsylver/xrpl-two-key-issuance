@@ -198,9 +198,9 @@ const seatChips = (keySet: 'register' | 'desk') => brand.seats[keySet]
     TESTNET_EXPLORER_BASE,
     type MptPayment,
   } from '../lib/xrplClient'
-  import { buildRegisterLedger, orderRefOf } from '../lib/ledger'
+  import { buildRegisterLedger, lastDeliveryLine, orderRefOf } from '../lib/ledger'
   import { currentDealingDay, formatDealingDay, formatEuro, illustrativeDealing, parseDealingMonth, suggestNextDealingDay } from '../lib/dealing'
-  import { esc, formatDate, formatShortDate, joinList } from '../lib/format'
+  import { esc, formatShortDate, joinList } from '../lib/format'
   import { numberWord, seatFor, seatsOf } from '../lib/role'
   import { formatUnits, parseUnits } from '../lib/units'
   import { readinessHtml, statusHtml } from '../lib/ui'
@@ -380,9 +380,7 @@ const seatChips = (keySet: 'register' | 'desk') => brand.seats[keySet]
       showRoleInHeader(holding.locked ? 'locked' : 'investor')
       const last = history.find((payment) => payment.destination === address)
       const ref = last ? orderRefOf(last.memos) : undefined
-      const lastLine = last
-        ? `Last delivery from the Dealing Desk: ${ref ? `order ${ref}, ` : ''}${last.date ? formatDate(last.date) : 'date unknown'}.`
-        : 'No deliveries from the Dealing Desk yet.'
+      const lastLine = last ? lastDeliveryLine(ref, last.date) : 'No deliveries from the Dealing Desk yet.'
       accountBody.innerHTML = `
         <div class="stack-tight" style="gap:2px">
           <span class="label">Your holding</span>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { encodeMemo } from 'xrpl'
-import { buildRegisterLedger, orderRefOf } from '../../src/lib/ledger'
+import { buildRegisterLedger, lastDeliveryLine, orderRefOf } from '../../src/lib/ledger'
 import { describeProposal } from '../../src/lib/preview'
 import type { MptPayment } from '../../src/lib/xrplClient'
 
@@ -92,5 +92,12 @@ describe('register ledger rows', () => {
       )
       expect(Boolean(preview.offProcedure)).toBe(Boolean(rows[i]!.offProcedure))
     }
+  })
+
+  it("words the investor's last delivery as the handoff does", () => {
+    expect(lastDeliveryLine('ORD-2026-09-006', new Date(2026, 9, 2))).toBe('Last delivery: order ORD-2026-09-006, dealing day 2026-09.')
+    expect(lastDeliveryLine('custom-ref', new Date(2026, 8, 22))).toBe('Last delivery: order custom-ref, dealing day 2026-09.')
+    expect(lastDeliveryLine(undefined, new Date(2026, 8, 22))).toBe('Last delivery: dealing day 2026-09.')
+    expect(lastDeliveryLine('custom-ref', undefined)).toBe('Last delivery: order custom-ref.')
   })
 })

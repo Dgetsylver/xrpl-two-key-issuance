@@ -1,5 +1,5 @@
 import type { TextMemo } from 'xrpl'
-import { contractNote, formatEuro, isDealingDay } from './dealing'
+import { contractNote, currentDealingDay, formatEuro, isDealingDay } from './dealing'
 import { shortAddress } from './format'
 import { isFinerThanUnits, issueDeviation, type IssueDeviation } from './procedure'
 import { formatAmountExact } from './units'
@@ -35,6 +35,19 @@ export interface LedgerInput {
 /** The order reference a delivery carries: an `order-ref` memo, else the first text memo's data. */
 export function orderRefOf(memos: TextMemo[]): string | undefined {
   return memos.find((memo) => memo.type === 'order-ref' && memo.data)?.data ?? memos.find((memo) => memo.data)?.data
+}
+
+/** The dealing day a delivery belongs to: from an `ORD-YYYY-MM-NNN` reference, else the month it was delivered in. */
+export function dealingDayOfDelivery(ref: string | undefined, date: Date | undefined): string | undefined {
+  const fromRef = ref ? /^ORD-(\d{4}-(?:0[1-9]|1[0-2]))-/.exec(ref)?.[1] : undefined
+  return fromRef ?? (date ? currentDealingDay(date) : undefined)
+}
+
+/** The investor's line: `Last delivery: order ORD-2026-09-006, dealing day 2026-09.` */
+export function lastDeliveryLine(ref: string | undefined, date: Date | undefined): string {
+  const day = dealingDayOfDelivery(ref, date)
+  const parts = [ref ? `order ${ref}` : '', day ? `dealing day ${day}` : ''].filter(Boolean)
+  return parts.length > 0 ? `Last delivery: ${parts.join(', ')}.` : 'Last delivery from the Dealing Desk: details unavailable.'
 }
 
 function mintPeriod(memos: TextMemo[]): string | undefined {
