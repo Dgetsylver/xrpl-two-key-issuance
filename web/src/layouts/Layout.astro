@@ -91,4 +91,12 @@ const nav: Array<{ id: NavId; label: string; href: string }> = [
 <script>
   import { initConnectHeader } from '../lib/connect'
   initConnectHeader()
+
+  // On a phone the nav scrolls sideways; bring the current page's item into view.
+  const nav = document.querySelector<HTMLElement>('.site-nav')
+  const current = nav?.querySelector<HTMLElement>('.nav-link.active')
+  if (nav && current) {
+    const overflow = current.getBoundingClientRect().right - nav.getBoundingClientRect().right
+    if (overflow > 0) nav.scrollLeft += overflow + 10
+  }
 </script>
