@@ -141,14 +141,18 @@ export async function getOutgoingMptPayments(account: string, mptIssuanceId: str
   const { payments } = await client.getMptPaymentHistory(account, mptIssuanceId)
   return payments.flatMap(({ transaction, deliveredAmount, hash, ledgerIndex }) => {
     if (deliveredAmount === undefined) return []
-    // API v1 history rows carry the close time on the transaction itself.
-    const closeTime = (transaction as { date?: unknown }).date
+    // API v1 history rows carry the close time and the ledger index on the
+    // transaction itself; the SDK's record-level `ledgerIndex` stays undefined
+    // for them, so fall back to the transaction's.
+    const v1 = transaction as { date?: unknown; ledger_index?: unknown }
+    const closeTime = v1.date
+    const index = typeof ledgerIndex === 'number' ? ledgerIndex : typeof v1.ledger_index === 'number' ? v1.ledger_index : undefined
     return [
       {
         destination: String(transaction.Destination ?? ''),
         amountRaw: deliveredAmount,
         hash,
-        ledgerIndex,
+        ledgerIndex: index,
         sequence: typeof transaction.Sequence === 'number' ? transaction.Sequence : undefined,
         date: typeof closeTime === 'number' ? new Date(rippleTimeToUnixTime(closeTime)) : undefined,
         memos: textMemos(transaction.Memos),
