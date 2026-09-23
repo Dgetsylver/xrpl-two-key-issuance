@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { encodeMemo } from 'xrpl'
 import { buildRegisterLedger, orderRefOf } from '../../src/lib/ledger'
+import { describeProposal } from '../../src/lib/preview'
 import type { MptPayment } from '../../src/lib/xrplClient'
+
+const ISSUANCE = '0140588A60AD414AC57B9EE936049173E9CF215CB1BA2DE9'
 
 const REGISTER = 'r9FBRP7L5gnqG7LiHw1SqDwZ14V9rXhEHY'
 const DESK = 'rf8KiuvfVqZ3GkwmQTUCyWySAW1Pv5qEVA'
@@ -49,5 +53,37 @@ describe('register ledger rows', () => {
     expect(orderRefOf([{ type: 'note', data: 'x' }, { type: 'order-ref', data: 'ORD-1' }])).toBe('ORD-1')
     expect(orderRefOf([{ type: 'note', data: 'x' }])).toBe('x')
     expect(orderRefOf([])).toBeUndefined()
+  })
+
+  it('flags the same issues Co-sign flags: a non-month dealing day and units off the contract note', () => {
+    const issues = [
+      pay(DESK, '3334890000000', 4, [{ type: 'mint-period', data: 'august 2026 NOAA total' }]),
+      pay(DESK, '1000000000000', 3, [{ type: 'mint-period', data: '2026-10' }]),
+      pay(DESK, '235187958000000', 2, [{ type: 'mint-period', data: '2026-10' }]),
+      pay(INVESTOR, '235187958000000', 1, [{ type: 'mint-period', data: '2026-10' }]),
+      pay(DESK, '235187958000000', 0),
+    ]
+    const rows = buildRegisterLedger({ issuer: REGISTER, desk: DESK, ticker: 'HQUAY', issuerPayments: issues, deskPayments: [] })
+    expect(rows.map((row) => row.offProcedure)).toEqual([
+      "Dealing day isn't a YYYY-MM month",
+      "Units don't match the contract note",
+      undefined,
+      'Skipped the Dealing Desk',
+      'No dealing-day memo',
+    ])
+    const ctx = { ticker: 'HQUAY', mptIssuanceId: ISSUANCE, issuer: REGISTER, desk: DESK }
+    for (const [i, issue] of issues.entries()) {
+      const preview = describeProposal(
+        {
+          TransactionType: 'Payment',
+          Account: REGISTER,
+          Destination: issue.destination,
+          Amount: { mpt_issuance_id: ISSUANCE, value: issue.amountRaw },
+          Memos: issue.memos.map((memo) => encodeMemo(memo)),
+        },
+        ctx,
+      )
+      expect(Boolean(preview.offProcedure)).toBe(Boolean(rows[i]!.offProcedure))
+    }
   })
 })

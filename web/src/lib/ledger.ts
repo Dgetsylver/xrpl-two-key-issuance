@@ -1,6 +1,7 @@
 import type { TextMemo } from 'xrpl'
 import { contractNote, formatEuro, isDealingDay } from './dealing'
 import { shortAddress } from './format'
+import { issueDeviation, type IssueDeviation } from './procedure'
 import { formatUnits } from './units'
 import type { MptPayment } from './xrplClient'
 
@@ -45,6 +46,14 @@ export function matchesContractNote(day: string, amountRaw: string): boolean {
   return isDealingDay(day) && contractNote(day).unitsRaw === BigInt(amountRaw)
 }
 
+/** The short off-procedure flag for a ledger row: the same issues Co-sign flags, in a few words. */
+const LEDGER_REASON: Record<IssueDeviation['kind'], string> = {
+  'skips-desk': 'Skipped the Dealing Desk',
+  'no-day': 'No dealing-day memo',
+  'not-a-month': "Dealing day isn't a YYYY-MM month",
+  'units-differ': "Units don't match the contract note",
+}
+
 function issueRow(payment: MptPayment, input: LedgerInput): LedgerRow {
   const units = `${formatUnits(payment.amountRaw)} ${input.ticker}`
   const day = mintPeriod(payment.memos)
@@ -54,9 +63,7 @@ function issueRow(payment: MptPayment, input: LedgerInput): LedgerRow {
     const note = contractNote(day)
     memo = `${day} · ${formatEuro(note.cash, 0)} ÷ ${formatEuro(note.nav, 4)} (illustrative)`
   }
-  let offProcedure: string | undefined
-  if (!toDesk) offProcedure = 'Skipped the Dealing Desk'
-  else if (!day) offProcedure = 'No dealing-day memo'
+  const deviation = issueDeviation({ toDesk, day, amountRaw: payment.amountRaw })
   return {
     stamp: 'ISSUE',
     title: toDesk ? `Issued ${units} to the Dealing Desk` : `Issued ${units} directly to ${shortAddress(payment.destination)}`,
@@ -64,7 +71,7 @@ function issueRow(payment: MptPayment, input: LedgerInput): LedgerRow {
     hash: payment.hash,
     ledgerIndex: payment.ledgerIndex,
     date: payment.date,
-    offProcedure,
+    offProcedure: deviation && LEDGER_REASON[deviation.kind],
   }
 }
 

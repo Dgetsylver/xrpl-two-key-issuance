@@ -1,8 +1,9 @@
 import { decodeMemo, type Memo } from 'xrpl'
 import { brand, type KeySet } from '../brand'
-import { contractNote, isDealingDay, noteShortForm, type ContractNote } from './dealing'
+import { contractNote, noteShortForm, type ContractNote } from './dealing'
 import { shortAddress } from './format'
 import { orderRefOf } from './ledger'
+import { issueDeviation, type IssueDeviation } from './procedure'
 import { formatUnits } from './units'
 
 /**
@@ -55,6 +56,20 @@ export interface ProposalPreview {
 
 export const OFF_PROCEDURE_SKIPS_DESK =
   'the units go straight to an investor and skip the Dealing Desk. Register issues normally go only to the Desk.'
+
+/** Completes "The transaction is valid, but {reason} Check with the proposer before you sign." */
+function coSignReason(deviation: IssueDeviation, ticker: string): string {
+  switch (deviation.kind) {
+    case 'skips-desk':
+      return OFF_PROCEDURE_SKIPS_DESK
+    case 'no-day':
+      return 'it carries no dealing-day memo, so it belongs to no dealing day.'
+    case 'not-a-month':
+      return `its dealing day "${deviation.day}" isn't a YYYY-MM month.`
+    case 'units-differ':
+      return `the units don't match the contract note for dealing day ${deviation.day} (${formatUnits(deviation.note.unitsRaw)} ${ticker} at ${noteShortForm(deviation.note)}, illustrative).`
+  }
+}
 
 function textMemos(tx: Record<string, unknown>) {
   const memos = Array.isArray(tx.Memos) ? (tx.Memos as Memo[]) : []
@@ -117,56 +132,36 @@ export function describeProposal(tx: Record<string, unknown>, ctx: ProposalConte
 
   if (fromRegister) {
     const day = memos.find((memo) => memo.type === 'mint-period' && memo.data)?.data
-    if (destination !== ctx.desk) {
+    const deviation = issueDeviation({ toDesk: destination === ctx.desk, day, amountRaw })
+    const issue = { ...base, kind: 'issue' as const, keySet: 'register' as const, day }
+    if (deviation?.kind === 'skips-desk') {
       return {
-        ...base,
-        kind: 'issue',
-        keySet: 'register',
-        day,
+        ...issue,
         sentence: `Issue ${units} directly to ${shortAddress(destination)}`,
         doneSentence: `${units} issued to ${shortAddress(destination)}.`,
-        offProcedure: OFF_PROCEDURE_SKIPS_DESK,
+        offProcedure: coSignReason(deviation, ctx.ticker),
       }
     }
     if (!day) {
       return {
-        ...base,
-        kind: 'issue',
-        keySet: 'register',
+        ...issue,
         sentence: `Issue ${units} to the Dealing Desk`,
         doneSentence: `${units} issued to the Dealing Desk.`,
-        offProcedure: 'it carries no dealing-day memo, so it belongs to no dealing day.',
+        offProcedure: deviation && coSignReason(deviation, ctx.ticker),
       }
     }
     const done = `${units} issued to the Dealing Desk for dealing day ${day}.`
-    if (!isDealingDay(day)) {
+    if (deviation) {
       return {
-        ...base,
-        kind: 'issue',
-        keySet: 'register',
-        day,
+        ...issue,
         sentence: `Issue ${units} to the Dealing Desk for dealing day ${day}`,
         doneSentence: done,
-        offProcedure: `its dealing day "${day}" isn't a YYYY-MM month.`,
+        offProcedure: coSignReason(deviation, ctx.ticker),
       }
     }
     const note = contractNote(day)
-    if (note.unitsRaw !== BigInt(amountRaw)) {
-      return {
-        ...base,
-        kind: 'issue',
-        keySet: 'register',
-        day,
-        sentence: `Issue ${units} to the Dealing Desk for dealing day ${day}`,
-        doneSentence: done,
-        offProcedure: `the units don't match the contract note for dealing day ${day} (${formatUnits(note.unitsRaw)} ${ctx.ticker} at ${noteShortForm(note)}, illustrative).`,
-      }
-    }
     return {
-      ...base,
-      kind: 'issue',
-      keySet: 'register',
-      day,
+      ...issue,
       note,
       sentence: `Issue ${units} to the Dealing Desk for dealing day ${day} (${noteShortForm(note)})`,
       doneSentence: done,
