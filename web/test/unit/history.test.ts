@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Client, encodeMemo } from 'xrpl'
 import { getMintHistory } from '../../src/lib/xrplClient'
-import { fromGton, toGton } from '../../src/lib/gton'
+import { formatUnits, parseUnits } from '../../src/lib/units'
 
 beforeEach(() => {
   vi.spyOn(Client.prototype, 'connect').mockResolvedValue()
@@ -29,10 +29,10 @@ describe('typed mint history and display units', () => {
     ])
     expect(history).toHaveBeenCalledWith('issuer', 'issuance')
   })
-  it('preserves exact raw amounts at supply scale and rejects excess precision', () => {
-    const raw = '9223372036854775807'
-    expect(fromGton(toGton(raw))).toBe(raw)
-    expect(toGton('1000000001')).toBe('1.000000001')
-    expect(() => fromGton('1.0000000001')).toThrow()
+  it('round-trips 3 dp amounts at the ledger scale, floors display, and rejects excess precision', () => {
+    expect(parseUnits(formatUnits('9223372036854000000'))).toBe('9223372036854000000')
+    expect(formatUnits('9223372036854775807')).toBe('9,223,372,036.854')
+    expect(formatUnits('1000000001')).toBe('1.000')
+    expect(() => parseUnits('1.0001')).toThrow()
   })
 })

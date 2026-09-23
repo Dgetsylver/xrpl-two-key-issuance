@@ -52,7 +52,7 @@ import { withBase } from '../lib/paths'
         <div id="send-destination-warning" style="display:none; margin-top: 0.5rem;"></div>
       </div>
       <div class="field">
-        <label for="send-amount">Amount (Gton)</label>
+        <label for="send-amount">Amount (units)</label>
         <input id="send-amount" name="amount" placeholder="0" required />
       </div>
       <button type="submit">Send</button>
@@ -95,7 +95,7 @@ import { withBase } from '../lib/paths'
   import { onConnectionChange } from '../lib/connect'
   import { ghostsigSign, GhostsigError } from '../lib/ghostsig'
   import { getClient, getOutstandingSupplyRaw, getMptHolding, getXrpBalanceDrops, isAccountFunded, destinationReadinessWarning, TESTNET_EXPLORER_BASE } from '../lib/xrplClient'
-  import { toGton, fromGton } from '../lib/gton'
+  import { formatUnits, parseUnits } from '../lib/units'
 
   let connectedAddress: string | undefined
 
@@ -119,13 +119,13 @@ import { withBase } from '../lib/paths'
     if (!mptIssuanceId) return
     try {
       const supplyRaw = await getOutstandingSupplyRaw(mptIssuanceId)
-      document.getElementById('stat-supply')!.textContent = `${toGton(supplyRaw)} Gton`
+      document.getElementById('stat-supply')!.textContent = `${formatUnits(supplyRaw)} units`
     } catch {
       document.getElementById('stat-supply')!.textContent = 'unavailable'
     }
     if (connectedAddress) {
       const holding = await getMptHolding(connectedAddress, mptIssuanceId)
-      document.getElementById('stat-balance')!.textContent = holding.authorized ? `${toGton(holding.balanceRaw)} Gton` : 'not authorized'
+      document.getElementById('stat-balance')!.textContent = holding.authorized ? `${formatUnits(holding.balanceRaw)} units` : 'not authorized'
       const drops = await getXrpBalanceDrops(connectedAddress)
       document.getElementById('stat-xrp')!.textContent = drops ? `${(Number(drops) / 1_000_000).toLocaleString()} XRP` : 'unfunded'
     }
@@ -243,7 +243,7 @@ import { withBase } from '../lib/paths'
       const amountInput = String(formData.get('amount') ?? '').trim()
       await checkSendDestination()
       try {
-        const amountRaw = fromGton(amountInput)
+        const amountRaw = parseUnits(amountInput)
         const tx = (await getClient()).forAccount(connectedAddress).tx.payment({
           Destination: destination, Amount: { mpt_issuance_id: config.mptIssuanceId, value: amountRaw },
         }).toJSON()

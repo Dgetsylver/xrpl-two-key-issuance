@@ -17,7 +17,7 @@ import Layout from '../layouts/Layout.astro'
 
     <form id="mint-form" style="margin-top: 1rem; display:none;">
       <div class="field">
-        <label for="mint-amount">Amount to mint (Gton)</label>
+        <label for="mint-amount">Amount to mint (units)</label>
         <input id="mint-amount" name="amount" placeholder="0" required />
       </div>
       <div class="field">
@@ -41,7 +41,7 @@ import Layout from '../layouts/Layout.astro'
   import { signCeremonyPayload, buildHandoffMessage } from '../lib/ceremony'
   import { describePaymentTx } from '../lib/preview'
   import { getMintHistory, suggestNextMintPeriod } from '../lib/xrplClient'
-  import { toGton, fromGton } from '../lib/gton'
+  import { formatUnits, parseUnits } from '../lib/units'
   import QRCode from 'qrcode'
 
   const pageError = document.getElementById('page-error')!
@@ -80,7 +80,7 @@ import Layout from '../layouts/Layout.astro'
         for (const record of history) {
           const row = body.insertRow()
           row.insertCell().textContent = record.period
-          row.insertCell().textContent = `${toGton(record.amountRaw)} ${config.token.ticker}`
+          row.insertCell().textContent = `${formatUnits(record.amountRaw)} ${config.token.ticker}`
         }
         historyArea.replaceChildren(heading, table)
       }
@@ -118,7 +118,7 @@ import Layout from '../layouts/Layout.astro'
       const submitButton = mintForm.querySelector('button[type="submit"]') as HTMLButtonElement
       submitButton.disabled = true
       try {
-        const amountRaw = fromGton(amountInput)
+        const amountRaw = parseUnits(amountInput)
         const tx = await buildProposalPaymentTx(issuer.address, governance.address, mptIssuanceId, amountRaw, issuer.quorum, {
           type: 'mint-period',
           data: period,

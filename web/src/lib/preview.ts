@@ -1,12 +1,12 @@
 import { decodeMemo } from 'xrpl'
-import { toGton } from './gton'
+import { formatUnits } from './units'
 
 export interface PaymentPreview {
   kind: 'mint' | 'disbursement' | 'payment'
   summary: string
   account: string
   destination: string
-  amountGton: string
+  amountUnits: string
   period?: string
 }
 
@@ -42,35 +42,35 @@ export function describePaymentTx(
   const account = String(tx.Account ?? '')
   const destination = String(tx.Destination ?? '')
   const amount = tx.Amount as { value?: string } | undefined
-  const amountGton = amount?.value ? toGton(amount.value) : '0'
+  const amountUnits = amount?.value ? formatUnits(amount.value) : '0'
   const period = findMintPeriod(tx)
 
   if (issuerAddress && account === issuerAddress) {
     return {
       kind: 'mint',
-      summary: `Mint ${amountGton} ${ticker} to governance (${destination})${period ? ` for period "${period}"` : ''}.`,
+      summary: `Mint ${amountUnits} ${ticker} to governance (${destination})${period ? ` for period "${period}"` : ''}.`,
       account,
       destination,
-      amountGton,
+      amountUnits,
       period,
     }
   }
   if (governanceAddress && account === governanceAddress) {
     return {
       kind: 'disbursement',
-      summary: `Disburse ${amountGton} ${ticker} from governance to ${destination}.`,
+      summary: `Disburse ${amountUnits} ${ticker} from governance to ${destination}.`,
       account,
       destination,
-      amountGton,
+      amountUnits,
       period,
     }
   }
   return {
     kind: 'payment',
-    summary: `Send ${amountGton} ${ticker} from ${account} to ${destination}.`,
+    summary: `Send ${amountUnits} ${ticker} from ${account} to ${destination}.`,
     account,
     destination,
-    amountGton,
+    amountUnits,
     period,
   }
 }

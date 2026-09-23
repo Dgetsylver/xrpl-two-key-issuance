@@ -20,7 +20,7 @@ import Layout from '../layouts/Layout.astro'
         <div id="destination-warning" style="display:none; margin-top: 0.5rem;"></div>
       </div>
       <div class="field">
-        <label for="disbursement-amount">Amount (Gton)</label>
+        <label for="disbursement-amount">Amount (units)</label>
         <input id="disbursement-amount" name="amount" placeholder="0" required />
       </div>
       <button type="submit">Sign proposal</button>
@@ -40,7 +40,7 @@ import Layout from '../layouts/Layout.astro'
   import { signCeremonyPayload, buildHandoffMessage } from '../lib/ceremony'
   import { describePaymentTx } from '../lib/preview'
   import { destinationReadinessWarning } from '../lib/xrplClient'
-  import { fromGton } from '../lib/gton'
+  import { parseUnits } from '../lib/units'
   import QRCode from 'qrcode'
 
   const pageError = document.getElementById('page-error')!
@@ -112,7 +112,7 @@ import Layout from '../layouts/Layout.astro'
       submitButton.disabled = true
       await checkDestination()
       try {
-        const amountRaw = fromGton(amountInput)
+        const amountRaw = parseUnits(amountInput)
         const tx = await buildProposalPaymentTx(governance.address, destination, mptIssuanceId, amountRaw, governance.quorum)
         const preview = describePaymentTx(tx, config.token.ticker, config.issuer?.address, governance.address)
         const outcome = await signCeremonyPayload(tx, connectedAddress)
