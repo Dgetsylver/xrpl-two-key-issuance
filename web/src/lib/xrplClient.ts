@@ -222,3 +222,38 @@ export async function getProposalStatus(account: string, sequence: number, mptIs
   const match = payments.find((payment) => payment.sequence === sequence)
   return match ? { status: 'done', hash: match.hash } : { status: 'superseded' }
 }
+
+/**
+ * Polls a proposal until it settles (a co-signer's GhostSig submits it, or
+ * its sequence is used by something else) and calls `onSettled` once.
+ * Read failures are retried on the next tick. Returns a stop function.
+ */
+export function watchProposal(
+  account: string,
+  sequence: number,
+  mptIssuanceId: string,
+  onSettled: (status: Exclude<ProposalStatus, { status: 'pending' }>) => void,
+  intervalMs = 5_000,
+): () => void {
+  let stopped = false
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const tick = async () => {
+    if (stopped) return
+    try {
+      const status = await getProposalStatus(account, sequence, mptIssuanceId)
+      if (status.status !== 'pending' && !stopped) {
+        stopped = true
+        onSettled(status)
+        return
+      }
+    } catch {
+      /* A failed read says nothing about the proposal; try again. */
+    }
+    if (!stopped) timer = setTimeout(tick, intervalMs)
+  }
+  timer = setTimeout(tick, intervalMs)
+  return () => {
+    stopped = true
+    if (timer) clearTimeout(timer)
+  }
+}
