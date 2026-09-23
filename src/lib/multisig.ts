@@ -1,4 +1,4 @@
-import { Client, Wallet, multisign, type SubmittableTransaction } from 'xrpl'
+import { Client, Wallet, multisign, type SubmittableTransaction, type SubmitResult } from 'xrpl'
 import type { SignerWallet } from './config.js'
 
 /** Equal-weight signer entries for this demo's N-of-M policy. */
@@ -47,7 +47,10 @@ export async function submitMultisigned(client: Client, tx: SubmittableTransacti
 }
 
 /** Explicit outcome for callers expecting a failure, with no fabricated ledger response. */
-export async function trySubmitMultisigned(client: Client, tx: SubmittableTransaction, signers: SignerWallet[]) {
-  // Preparation/signing errors still throw, just like local validation errors.
-  return client.trySubmitAndWait(await signMultisigned(client, tx, signers))
+export async function trySubmitMultisigned(client: Client, tx: SubmittableTransaction, signers: SignerWallet[]): Promise<SubmitResult> {
+  try {
+    return await client.trySubmitAndWait(await signMultisigned(client, tx, signers))
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error : new Error(String(error)) }
+  }
 }
