@@ -1,4 +1,14 @@
 import { contractNote, isDealingDay, type ContractNote } from './dealing'
+import { isWholeThousandths } from './units'
+
+/**
+ * Units are only ever dealt in whole thousandths (3 decimals). A payment of
+ * the issuance that's finer than that came from outside this app's
+ * procedures, whoever sends it.
+ */
+export function isFinerThanUnits(amountRaw: string): boolean {
+  return !isWholeThousandths(amountRaw)
+}
 
 /**
  * How a Register issue departs from the dealing-day procedure (issue to the
@@ -10,6 +20,7 @@ export type IssueDeviation =
   | { kind: 'skips-desk' }
   | { kind: 'no-day' }
   | { kind: 'not-a-month'; day: string }
+  | { kind: 'finer-than-units' }
   | { kind: 'units-differ'; day: string; note: ContractNote }
 
 export interface IssueFacts {
@@ -25,6 +36,7 @@ export function issueDeviation({ toDesk, day, amountRaw }: IssueFacts): IssueDev
   if (!toDesk) return { kind: 'skips-desk' }
   if (!day) return { kind: 'no-day' }
   if (!isDealingDay(day)) return { kind: 'not-a-month', day }
+  if (!isWholeThousandths(amountRaw)) return { kind: 'finer-than-units' }
   const note = contractNote(day)
   if (note.unitsRaw !== BigInt(amountRaw)) return { kind: 'units-differ', day, note }
   return undefined

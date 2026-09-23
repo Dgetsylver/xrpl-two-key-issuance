@@ -1,8 +1,8 @@
 import type { TextMemo } from 'xrpl'
 import { contractNote, formatEuro, isDealingDay } from './dealing'
 import { shortAddress } from './format'
-import { issueDeviation, type IssueDeviation } from './procedure'
-import { formatUnits } from './units'
+import { isFinerThanUnits, issueDeviation, type IssueDeviation } from './procedure'
+import { formatAmountExact } from './units'
 import type { MptPayment } from './xrplClient'
 
 /**
@@ -51,11 +51,12 @@ const LEDGER_REASON: Record<IssueDeviation['kind'], string> = {
   'skips-desk': 'Skipped the Dealing Desk',
   'no-day': 'No dealing-day memo',
   'not-a-month': "Dealing day isn't a YYYY-MM month",
+  'finer-than-units': 'More than 3 decimals',
   'units-differ': "Units don't match the contract note",
 }
 
 function issueRow(payment: MptPayment, input: LedgerInput): LedgerRow {
-  const units = `${formatUnits(payment.amountRaw)} ${input.ticker}`
+  const units = `${formatAmountExact(payment.amountRaw)} ${input.ticker}`
   const day = mintPeriod(payment.memos)
   const toDesk = payment.destination === input.desk
   let memo = day ?? '(no dealing-day memo)'
@@ -76,9 +77,14 @@ function issueRow(payment: MptPayment, input: LedgerInput): LedgerRow {
 }
 
 function deskRow(payment: MptPayment, input: LedgerInput): LedgerRow {
-  const units = `${formatUnits(payment.amountRaw)} ${input.ticker}`
+  const units = `${formatAmountExact(payment.amountRaw)} ${input.ticker}`
   const ref = orderRefOf(payment.memos)
-  const base = { hash: payment.hash, ledgerIndex: payment.ledgerIndex, date: payment.date }
+  const base = {
+    hash: payment.hash,
+    ledgerIndex: payment.ledgerIndex,
+    date: payment.date,
+    offProcedure: isFinerThanUnits(payment.amountRaw) ? LEDGER_REASON['finer-than-units'] : undefined,
+  }
   if (payment.destination === input.issuer) {
     return { ...base, stamp: 'REDEEM', title: `Returned ${units} to the Register for cancellation`, memo: ref ?? '(no memo)' }
   }

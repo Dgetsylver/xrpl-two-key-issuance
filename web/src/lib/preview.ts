@@ -3,8 +3,8 @@ import { brand, type KeySet } from '../brand'
 import { contractNote, noteShortForm, type ContractNote } from './dealing'
 import { shortAddress } from './format'
 import { orderRefOf } from './ledger'
-import { issueDeviation, type IssueDeviation } from './procedure'
-import { formatUnits } from './units'
+import { isFinerThanUnits, issueDeviation, type IssueDeviation } from './procedure'
+import { formatAmountExact, formatUnits } from './units'
 
 /**
  * Plain-language description of a proposal, decoded from the transaction
@@ -57,6 +57,8 @@ export interface ProposalPreview {
 export const OFF_PROCEDURE_SKIPS_DESK =
   'the units go straight to an investor and skip the Dealing Desk. Register issues normally go only to the Desk.'
 
+export const FINER_THAN_UNITS = 'its amount has more than 3 decimals, and units are only ever dealt in thousandths.'
+
 /** Completes "The transaction is valid, but {reason} Check with the proposer before you sign." */
 function coSignReason(deviation: IssueDeviation, ticker: string): string {
   switch (deviation.kind) {
@@ -66,6 +68,8 @@ function coSignReason(deviation: IssueDeviation, ticker: string): string {
       return 'it carries no dealing-day memo, so it belongs to no dealing day.'
     case 'not-a-month':
       return `its dealing day "${deviation.day}" isn't a YYYY-MM month.`
+    case 'finer-than-units':
+      return FINER_THAN_UNITS
     case 'units-differ':
       return `the units don't match the contract note for dealing day ${deviation.day} (${formatUnits(deviation.note.unitsRaw)} ${ticker} at ${noteShortForm(deviation.note)}, illustrative).`
   }
@@ -126,7 +130,8 @@ export function describeProposal(tx: Record<string, unknown>, ctx: ProposalConte
   if (!destination || destination === account) return unrecognised(tx)
 
   const amountRaw = amount.value
-  const units = `${formatUnits(amountRaw)} ${ctx.ticker}`
+  // A single payment's amount is never floored here: /sign is the check on any blob.
+  const units = `${formatAmountExact(amountRaw)} ${ctx.ticker}`
   const memos = textMemos(tx)
   const base = { account, destination, amountRaw, rawFields: rawFieldsOf(tx) }
 
@@ -176,6 +181,7 @@ export function describeProposal(tx: Record<string, unknown>, ctx: ProposalConte
       keySet: 'desk',
       sentence: `Return ${units} to the Register for cancellation`,
       doneSentence: `${units} returned to the Register for cancellation.`,
+      offProcedure: isFinerThanUnits(amountRaw) ? FINER_THAN_UNITS : undefined,
     }
   }
   const orderRef = orderRefOf(memos)
@@ -186,5 +192,6 @@ export function describeProposal(tx: Record<string, unknown>, ctx: ProposalConte
     orderRef,
     sentence: `Deliver ${units} to ${shortAddress(destination)}${orderRef ? `, order ${orderRef}` : ', no order reference'}`,
     doneSentence: `${units} delivered to ${shortAddress(destination)}${orderRef ? `, order ${orderRef}` : ''}.`,
+    offProcedure: isFinerThanUnits(amountRaw) ? FINER_THAN_UNITS : undefined,
   }
 }

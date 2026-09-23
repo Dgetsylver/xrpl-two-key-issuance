@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { encodeMemo } from 'xrpl'
-import { describeProposal, OFF_PROCEDURE_SKIPS_DESK } from '../../src/lib/preview'
+import { describeProposal, FINER_THAN_UNITS, OFF_PROCEDURE_SKIPS_DESK } from '../../src/lib/preview'
 
 const ISSUANCE = '0140588A60AD414AC57B9EE936049173E9CF215CB1BA2DE9'
 const REGISTER = 'r9FBRP7L5gnqG7LiHw1SqDwZ14V9rXhEHY'
@@ -71,6 +71,16 @@ describe('OFF-PROCEDURE: valid, signable, flagged', () => {
     expect(preview.sentence).toBe('Issue 1,000.000 HQUAY to the Dealing Desk for dealing day 2026-10')
     expect(preview.offProcedure).toMatch(/don't match the contract note for dealing day 2026-10 \(235,187\.958 HQUAY at €2,450,000 ÷ NAV €10\.4172, illustrative\)/)
     expect(preview.note).toBeUndefined()
+  })
+
+  it('shows an amount finer than 3 decimals exactly, and flags it, for deliveries and issues alike', () => {
+    const deliver = describeProposal(payment(DESK, INVESTOR, '25000000999999', [{ type: 'order-ref', data: 'ORD-1' }]), ctx)
+    expect(deliver.sentence).toBe('Deliver 25,000.000999999 HQUAY to rLBbnq…gARY, order ORD-1')
+    expect(deliver.offProcedure).toBe(FINER_THAN_UNITS)
+    const issue = describeProposal(payment(REGISTER, DESK, '235187958999999', [{ type: 'mint-period', data: '2026-10' }]), ctx)
+    expect(issue.sentence).toBe('Issue 235,187.958999999 HQUAY to the Dealing Desk for dealing day 2026-10')
+    expect(issue.offProcedure).toBe(FINER_THAN_UNITS)
+    expect(describeProposal(payment(DESK, REGISTER, '1000000001'), ctx).offProcedure).toBe(FINER_THAN_UNITS)
   })
 
   it('flags an issue with no dealing day', () => {

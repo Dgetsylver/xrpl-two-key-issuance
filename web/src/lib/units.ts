@@ -32,6 +32,27 @@ export function formatUnits(raw: string | bigint): string {
   return `${negative ? '−' : ''}${whole}.${fraction}`
 }
 
+/** Whether a raw amount is a whole number of thousandths of a unit, so 3 decimals show it exactly. */
+export function isWholeThousandths(raw: string | bigint): boolean {
+  return (typeof raw === 'bigint' ? raw : BigInt(raw)) % RAW_PER_DISPLAYED_STEP === 0n
+}
+
+/**
+ * Formats one transaction's amount. Whole thousandths show as usual
+ * (`25,000.000`); anything finer shows every digit down to the ledger scale
+ * (`25,000.000999999`), so a co-signer or the public ledger never sees a
+ * floored figure for a single payment. Balances and totals use `formatUnits`.
+ */
+export function formatAmountExact(raw: string | bigint): string {
+  const value = typeof raw === 'bigint' ? raw : BigInt(raw)
+  if (isWholeThousandths(value)) return formatUnits(value)
+  const negative = value < 0n
+  const abs = negative ? -value : value
+  const scale = 10n ** BigInt(LEDGER_DISPLAY_SCALE)
+  const fraction = (abs % scale).toString().padStart(LEDGER_DISPLAY_SCALE, '0').replace(/0+$/, '')
+  return `${negative ? '−' : ''}${(abs / scale).toLocaleString('en-GB')}.${fraction}`
+}
+
 /**
  * Parses a units amount typed by a keyholder (grouping commas and spaces
  * allowed, at most 3 decimals) into the raw ledger integer string.
