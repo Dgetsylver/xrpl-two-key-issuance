@@ -34,6 +34,13 @@ export function formatDealingDay({ year, month }: DealingMonth): string {
   return `${year}-${String(month).padStart(2, '0')}`
 }
 
+/** Whether two dealing-day labels name the same day (`2026-10` and a legacy `202610` do). */
+export function sameDealingDay(a: string, b: string): boolean {
+  const x = parseDealingMonth(a)
+  const y = parseDealingMonth(b)
+  return x && y ? x.year === y.year && x.month === y.month : a.trim() === b.trim()
+}
+
 export function nextMonth({ year, month }: DealingMonth): DealingMonth {
   return month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 }
 }

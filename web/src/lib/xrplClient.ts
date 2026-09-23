@@ -173,6 +173,8 @@ export interface MintRecord {
   hash?: string
   destination?: string
   ledgerIndex?: number
+  /** The issuing account's sequence, which identifies the transaction. */
+  sequence?: number
   date?: Date
 }
 
@@ -189,6 +191,7 @@ export async function getMintHistory(issuerAddress: string, mptIssuanceId: strin
         hash: payment.hash,
         destination: payment.destination,
         ledgerIndex: payment.ledgerIndex,
+        sequence: payment.sequence,
         date: payment.date,
       },
     ]

@@ -75,6 +75,7 @@ describe('typed mint history and display units', () => {
         hash: 'hash',
         destination: 'rDesk',
         ledgerIndex: 40,
+        sequence: 7,
         // XRPL close time 800,000,000 s after 2000-01-01 = 2025-05-08T06:13:20Z.
         date: new Date('2025-05-08T06:13:20Z'),
       },

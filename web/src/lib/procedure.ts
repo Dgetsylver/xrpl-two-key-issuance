@@ -1,5 +1,6 @@
-import { contractNote, isDealingDay, type ContractNote } from './dealing'
+import { contractNote, isDealingDay, sameDealingDay, type ContractNote } from './dealing'
 import { isWholeThousandths } from './units'
+import type { MintRecord } from './xrplClient'
 
 /**
  * Units are only ever dealt in whole thousandths (3 decimals). A payment of
@@ -40,4 +41,13 @@ export function issueDeviation({ toDesk, day, amountRaw }: IssueFacts): IssueDev
   const note = contractNote(day)
   if (note.unitsRaw !== BigInt(amountRaw)) return { kind: 'units-differ', day, note }
   return undefined
+}
+
+/**
+ * The issue already on the ledger for `day`, if any, other than the
+ * transaction with `sequence` (a co-signer may open a proposal that has
+ * since been submitted).
+ */
+export function alreadyIssued(records: MintRecord[], day: string, sequence?: unknown): MintRecord | undefined {
+  return records.find((record) => sameDealingDay(record.period, day) && (sequence === undefined || record.sequence !== sequence))
 }

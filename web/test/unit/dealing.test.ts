@@ -5,10 +5,12 @@ import {
   illustrativeDealing,
   noteShortForm,
   parseDealingMonth,
+  sameDealingDay,
   suggestNextDealingDay,
   unitsForCash,
 } from '../../src/lib/dealing'
 import { suggestNextMintPeriod } from '../../src/lib/xrplClient'
+import { alreadyIssued } from '../../src/lib/procedure'
 import { formatUnits } from '../../src/lib/units'
 import { brand } from '../../src/brand'
 
@@ -77,5 +79,24 @@ describe('next dealing day', () => {
       '2026-10',
     )
     expect(suggestNextMintPeriod([], SEPT_2026)).toBe('2026-09')
+  })
+})
+
+describe('already issued', () => {
+  const records = [
+    { period: '202610', amountRaw: '1', sequence: 7 },
+    { period: '2026-09', amountRaw: '2', sequence: 8 },
+  ]
+
+  it('matches a dealing day across label formats', () => {
+    expect(sameDealingDay('2026-10', '202610')).toBe(true)
+    expect(sameDealingDay('2026-10', '2026-11')).toBe(false)
+    expect(sameDealingDay('launch', 'launch')).toBe(true)
+  })
+
+  it("finds the day's earlier issue but not the proposal itself", () => {
+    expect(alreadyIssued(records, '2026-10', 99)?.sequence).toBe(7)
+    expect(alreadyIssued(records, '2026-10', 7)).toBeUndefined()
+    expect(alreadyIssued(records, '2026-11', 99)).toBeUndefined()
   })
 })

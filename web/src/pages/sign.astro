@@ -57,6 +57,7 @@ import Layout from '../layouts/Layout.astro'
         <span class="small-muted" id="destination-line"></span>
       </div>
       <div id="note"></div>
+      <div id="history-check"></div>
       <div id="destination-warning"></div>
     </div>
 
@@ -92,10 +93,12 @@ import Layout from '../layouts/Layout.astro'
   import { onConnectionChange } from '../lib/connect'
   import { signCeremonyPayload } from '../lib/ceremony'
   import { describeProposal, type ProposalPreview } from '../lib/preview'
-  import { checkTransfer, watchProposal, TESTNET_EXPLORER_BASE } from '../lib/xrplClient'
+  import { checkTransfer, getMintHistory, watchProposal, TESTNET_EXPLORER_BASE } from '../lib/xrplClient'
+  import { alreadyIssued } from '../lib/procedure'
+  import { formatUnits } from '../lib/units'
   import { urlParamToBlob } from '../lib/blob'
   import { brand } from '../brand'
-  import { esc, shortAddress } from '../lib/format'
+  import { esc, formatDate, shortAddress } from '../lib/format'
   import { ROLE_WITH_ARTICLE, keySetAccount, seatOn, seatsOf, signerRole } from '../lib/role'
   import { chipsHtml, contractNoteHtml, keyMeterHtml, problemPanelHtml, readinessHtml, renderHandoff, sentenceHtml } from '../lib/ui'
   import type { ProblemStatus } from '../lib/outcome'
@@ -129,6 +132,9 @@ import Layout from '../layouts/Layout.astro'
   let connectedAddress: string | null = null
   let settled = false
   let stopWatching: (() => void) | undefined
+  /** Set when this issue's dealing day already has an issue on the ledger: a second, OFF-PROCEDURE reason. */
+  let duplicateReason: string | undefined
+  let historySeq = 0
 
   async function main() {
     const config = await loadPublicConfig()
@@ -168,8 +174,12 @@ import Layout from '../layouts/Layout.astro'
           ? `Proposed by ${shortAddress(first)}, which isn't a published ${brand.keySets[keySet].label} seat`
           : 'Not signed by anyone yet'
 
-      $('off-procedure').hidden = !preview.offProcedure
-      $('off-procedure-text').textContent = `The transaction is valid, but ${preview.offProcedure ?? ''} Check with the proposer before you sign.`
+      const reasons = [preview.offProcedure, duplicateReason].filter((reason): reason is string => Boolean(reason))
+      $('off-procedure').hidden = reasons.length === 0
+      $('off-procedure-text').textContent = `The transaction is valid, but ${reasons[0] ?? ''}${reasons
+        .slice(1)
+        .map((reason) => ` Also, ${reason}`)
+        .join('')} Check with the proposer before you sign.`
       $('sign-sentence').innerHTML = sentenceHtml(preview.sentence)
       const destination = preview.destination ?? ''
       const destinationName =
@@ -219,11 +229,39 @@ import Layout from '../layouts/Layout.astro'
         })
     }
 
+    /**
+     * The co-signer's own already-issued check: an issue for a dealing day
+     * that already has an issue on the ledger (other than this very
+     * transaction) is flagged OFF-PROCEDURE.
+     */
+    function checkDuplicateDay(proposal: ProposalPreview, sequence: unknown) {
+      const seq = ++historySeq
+      duplicateReason = undefined
+      const note = $('history-check')
+      note.innerHTML = ''
+      const day = proposal.day
+      if (proposal.kind !== 'issue' || !day || !ctx.issuer) return
+      getMintHistory(ctx.issuer, mptIssuanceId)
+        .then((records) => {
+          if (seq !== historySeq) return
+          const issued = alreadyIssued(records, day, sequence)
+          if (!issued) return
+          const when = issued.date ? ` on ${formatDate(issued.date)}` : ''
+          duplicateReason = `dealing day ${day} was already issued${when} (${formatUnits(issued.amountRaw)} ${ctx.ticker}), so this would put a second set of units in issue for the same day.`
+          render()
+        })
+        .catch(() => {
+          if (seq !== historySeq) return
+          note.innerHTML = `<div class="status">Couldn't check whether dealing day ${esc(day)} was already issued. Check the register ledger before you sign.</div>`
+        })
+    }
+
     function load(decoded: Record<string, unknown>) {
       tx = decoded
       preview = describeProposal(decoded, ctx)
       pageError.textContent = ''
       checkDestination(preview)
+      checkDuplicateDay(preview, decoded.Sequence)
       render()
     }
 
