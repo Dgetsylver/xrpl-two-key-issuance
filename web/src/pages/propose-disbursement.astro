@@ -14,6 +14,11 @@ import Layout from '../layouts/Layout.astro'
   <section id="non-signer" class="card" hidden></section>
 
   <form id="deliver-form" class="stack" novalidate hidden>
+    <div id="suspended" class="panel panel-alert" hidden>
+      <span class="panel-label">Dealing suspended</span>
+      <span>The Register has suspended dealing for the class. No deliveries are proposed until it lifts; the ledger would reject them.</span>
+    </div>
+
     <div class="inventory-strip">
       <span class="inventory-label" id="inventory-label">Desk inventory</span>
       <span class="inventory-value" id="inventory-value">—</span>
@@ -58,6 +63,7 @@ import Layout from '../layouts/Layout.astro'
   import { describeProposal } from '../lib/preview'
   import {
     checkTransfer,
+    getIssuanceState,
     getMptHolding,
     getOutgoingMptPayments,
     mintPeriodOf,
@@ -86,6 +92,8 @@ import Layout from '../layouts/Layout.astro'
   let inFlight = false
   /** Set while the readiness check says the ledger would reject this delivery; the sign button stays disabled. */
   let destinationBlocked = false
+  /** The issuance is locked: dealing is suspended. */
+  let suspended = false
   let checkSeq = 0
 
   async function main() {
@@ -146,7 +154,7 @@ import Layout from '../layouts/Layout.astro'
 
     function setBlocked(blocked: boolean) {
       destinationBlocked = blocked
-      deliverButton.disabled = blocked
+      deliverButton.disabled = destinationBlocked || suspended
     }
 
     /** The units typed so far as a raw amount, if they parse, so the check covers Desk inventory too. */
@@ -260,7 +268,7 @@ import Layout from '../layouts/Layout.astro'
         return
       }
       await checkDestination()
-      if (destinationBlocked) return
+      if (destinationBlocked || suspended) return
       deliverButton.disabled = true
       deliverButton.classList.add('is-waiting')
       deliverButton.textContent = 'Waiting for your passkey…'
@@ -303,7 +311,7 @@ import Layout from '../layouts/Layout.astro'
       } catch (err) {
         pageError.textContent = err instanceof Error ? err.message : String(err)
       } finally {
-        deliverButton.disabled = destinationBlocked
+        deliverButton.disabled = destinationBlocked || suspended
         deliverButton.classList.remove('is-waiting')
         deliverButton.textContent = 'Sign delivery with passkey'
       }
@@ -322,6 +330,16 @@ import Layout from '../layouts/Layout.astro'
       nonSigner.hidden = true
       if (!inFlight) form.hidden = false
     })
+
+    // A locked issuance means dealing is suspended: say so and don't propose. A failed read leaves it to the ledger.
+    getIssuanceState(mptIssuanceId).then(
+      (state) => {
+        suspended = Boolean(state.flags.lsfMPTLocked)
+        $('suspended').hidden = !suspended
+        setBlocked(destinationBlocked)
+      },
+      () => undefined,
+    )
 
     refInput.value = suggestOrderRef()
     await refreshInventory()

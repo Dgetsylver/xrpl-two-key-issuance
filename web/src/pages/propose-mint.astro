@@ -14,6 +14,11 @@ import Layout from '../layouts/Layout.astro'
   <section id="non-signer" class="card" hidden></section>
 
   <section id="propose" class="stack" hidden>
+    <div id="suspended" class="panel panel-alert" hidden>
+      <span class="panel-label">Dealing suspended</span>
+      <span>The Register has suspended dealing for the class. No issues are proposed until it lifts.</span>
+    </div>
+
     <div class="field">
       <label for="day-input">Dealing day</label>
       <input id="day-input" class="input day" autocomplete="off" spellcheck="false" placeholder="YYYY-MM" maxlength="7" />
@@ -65,6 +70,7 @@ import Layout from '../layouts/Layout.astro'
   import { signCeremonyPayload } from '../lib/ceremony'
   import { describeProposal } from '../lib/preview'
   import {
+    getIssuanceState,
     getMintHistory,
     getMptHolding,
     suggestNextMintPeriod,
@@ -90,6 +96,8 @@ import Layout from '../layouts/Layout.astro'
   let connectedAddress: string | undefined
   let stopWatching: (() => void) | undefined
   let proposed = false
+  /** The issuance is locked: dealing is suspended, so the propose button stays disabled. */
+  let suspended = false
 
   function normalise(label: string): string {
     const month = parseDealingMonth(label)
@@ -145,7 +153,7 @@ import Layout from '../layouts/Layout.astro'
       const valid = isDealingDay(day)
       $('day-hint').textContent = valid || day === '' ? 'Format YYYY-MM' : 'Use the format YYYY-MM, e.g. 2026-10'
       $('day-hint').style.color = valid || day === '' ? '' : 'var(--brand-alert)'
-      proposeButton.disabled = !valid
+      proposeButton.disabled = !valid || suspended
       if (!valid) {
         $('note').innerHTML = ''
         $('duplicate').hidden = true
@@ -285,7 +293,7 @@ import Layout from '../layouts/Layout.astro'
       } catch (err) {
         pageError.textContent = err instanceof Error ? err.message : String(err)
       } finally {
-        proposeButton.disabled = !isDealingDay(dayInput.value.trim())
+        proposeButton.disabled = !isDealingDay(dayInput.value.trim()) || suspended
         proposeButton.classList.remove('is-waiting')
         proposeButton.textContent = 'Sign with passkey and propose'
       }
@@ -307,6 +315,16 @@ import Layout from '../layouts/Layout.astro'
       if (!proposed) $('propose').hidden = false
       renderSeats(seat.address)
     })
+
+    // A locked issuance means dealing is suspended: say so and don't propose. A failed read leaves it to the ledger.
+    getIssuanceState(mptIssuanceId).then(
+      (state) => {
+        suspended = Boolean(state.flags.lsfMPTLocked)
+        $('suspended').hidden = !suspended
+        renderDay()
+      },
+      () => undefined,
+    )
 
     // The current month until the history arrives, then the month after the latest issue.
     dayInput.value = suggestNextMintPeriod([])
