@@ -23,8 +23,8 @@ response types. GhostSig still owns browser keys and the multi-person ceremony;
 we never instantiate a local signing wallet for a GhostSig address.
 
 See [the SDK stack cleanup](docs/aha-sdk-stack-cleanup.md) for the new before/after
-examples, deleted helpers and verification. The [initial migration review](docs/aha-prototype-review.md)
-preserves the findings that motivated this stack.
+examples, deleted helpers and verification. The [initial migration PR](https://github.com/theahaco/carbon-coin/pull/9)
+records the findings that motivated this stack.
 
 ## Design summary
 

@@ -171,5 +171,5 @@ ledger amounts are unchanged.
 
 The existing application findings around comprehensive signing-preview validation
 and recoverable bootstrap/state persistence remain separate work. This stack does
-not claim to resolve them. Review the older [finding inventory](aha-prototype-review.md)
+not claim to resolve them. Review the older [migration PR](https://github.com/theahaco/carbon-coin/pull/9)
 for that context.
