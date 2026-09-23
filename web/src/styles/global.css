@@ -375,6 +375,11 @@ main {
   min-width: 0;
 }
 
+/* Placeholders a script fills later (a note, a warning) take no gap while empty. */
+.stack > div:empty {
+  display: none;
+}
+
 .stack-tight {
   display: flex;
   flex-direction: column;
