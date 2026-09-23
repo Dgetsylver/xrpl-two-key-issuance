@@ -10,12 +10,17 @@ import { ROLE_WITH_ARTICLE, waitingFor, type RoleKind, type Seat } from './role'
 import { formatUnits } from './units'
 import { withBase } from './paths'
 
-export function statusHtml(kind: 'error' | 'success' | 'info', text: string): string {
-  return `<div class="status ${kind === 'info' ? '' : kind}" role="${kind === 'error' ? 'alert' : 'status'}">${esc(text)}</div>`
+/**
+ * Escapes a plain-language sentence and keeps its references on one line:
+ * dealing days (`2026-10`), order refs (`ORD-2026-10-014`) and short
+ * addresses (`rAb7Tq…Q7Kx`) never break at a hyphen.
+ */
+export function sentenceHtml(text: string): string {
+  return esc(text).replace(/\b(?:[A-Z]{2,}-[\w-]+|\d{4}-\d{2}|r\w{5}…\w{4})/g, (token) => `<span class="nowrap">${token}</span>`)
 }
 
-export function showError(el: HTMLElement, err: unknown): void {
-  el.textContent = err instanceof Error ? err.message : String(err)
+export function statusHtml(kind: 'error' | 'success' | 'info', text: string): string {
+  return `<div class="status ${kind === 'info' ? '' : kind}" role="${kind === 'error' ? 'alert' : 'status'}">${esc(text)}</div>`
 }
 
 /** Seat chips for a key set. `signed` seats are solid with a check; `you` is bold and suffixed. */
@@ -104,7 +109,7 @@ export async function renderHandoff(container: HTMLElement, opts: HandoffOptions
     ${chipsHtml(opts.seats, { signed: opts.signed })}
     <div class="stack-tight">
       <span class="label">Relay message</span>
-      <div class="relay">${esc(opts.relay)}</div>
+      <div class="relay">${sentenceHtml(opts.relay)}</div>
     </div>
     <div class="handoff-grid">
       <div class="stack-tight" style="gap:8px">

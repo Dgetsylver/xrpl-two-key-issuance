@@ -75,7 +75,7 @@ import Layout from '../layouts/Layout.astro'
   import { esc, formatDate } from '../lib/format'
   import { numberWord, seatOn, seatsOf, signerRole } from '../lib/role'
   import { formatUnits, parseUnits } from '../lib/units'
-  import { chipsHtml, contractNoteHtml, nonSignerHtml, renderHandoff } from '../lib/ui'
+  import { chipsHtml, contractNoteHtml, nonSignerHtml, renderHandoff, sentenceHtml } from '../lib/ui'
   import { withBase } from '../lib/paths'
 
   const $ = (id: string) => document.getElementById(id)!
@@ -210,7 +210,7 @@ import Layout from '../layouts/Layout.astro'
           : `Dealing day ${day} is now in the register ledger.`
       panel.innerHTML = `
         <span class="panel-label">${issuer.quorum} of ${issuer.quorum} keys · Issued</span>
-        <p class="result-sentence">${esc(doneSentence)}</p>
+        <p class="result-sentence">${sentenceHtml(doneSentence)}</p>
         <p class="body-2">${esc(bay + inventory)}</p>
         <div class="row-wrap">
           <a class="btn btn-primary" href="${esc(withBase('/'))}">Fund overview</a>
