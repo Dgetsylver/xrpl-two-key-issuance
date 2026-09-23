@@ -89,9 +89,15 @@ describe('admissions and admission requests', () => {
   })
 
   it('finds each holder self-authorisation as a request, and which are still unadmitted', () => {
+    // OTHER withdrew its request at ledger 7.
     const requests = admissionRequestsOf(history, REGISTER)
-    expect(requests.map((r) => r.account)).toEqual([OTHER, INVESTOR, DESK])
-    expect(unadmittedRequests(requests, admissionsOf(history, REGISTER), [DESK]).map((r) => r.account)).toEqual([OTHER])
+    expect(requests.map((r) => r.account)).toEqual([INVESTOR, DESK])
+    expect(unadmittedRequests(requests, admissionsOf(history, REGISTER), [DESK]).map((r) => r.account)).toEqual([])
+    // Asking again after withdrawing is a new request.
+    const again = [...history, authorize(OTHER, 9)]
+    expect(unadmittedRequests(admissionRequestsOf(again, REGISTER), admissionsOf(again, REGISTER), [DESK]).map((r) => [r.account, r.ledgerIndex])).toEqual([
+      [OTHER, 9],
+    ])
   })
 
   it("dates an investor's admission from the ledger", () => {

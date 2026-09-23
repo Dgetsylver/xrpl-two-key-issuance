@@ -52,14 +52,18 @@ export function admissionsOf(transactions: IssuanceTransaction[], issuer: string
   )
 }
 
-/** Each account's latest admission request (a holder setting up its own holding), newest first. */
+/**
+ * Each account's latest admission request (a holder setting up its own
+ * holding), newest first. A holder that withdrew since (its own
+ * tfMPTUnauthorize, which deletes the empty holding) has none.
+ */
 export function admissionRequestsOf(transactions: IssuanceTransaction[], issuer: string): AdmissionRequest[] {
-  const latest = new Map<string, AdmissionRequest>()
+  const latest = new Map<string, AdmissionRequest | null>()
   for (const tx of newestFirst(transactions)) {
-    if (!isAuthorize(tx) || tx.account === issuer || tx.holder !== undefined || latest.has(tx.account)) continue
-    latest.set(tx.account, { account: tx.account, hash: tx.hash, ledgerIndex: tx.ledgerIndex, date: tx.date })
+    if (tx.type !== 'MPTokenAuthorize' || tx.account === issuer || tx.holder !== undefined || latest.has(tx.account)) continue
+    latest.set(tx.account, isAuthorize(tx) ? { account: tx.account, hash: tx.hash, ledgerIndex: tx.ledgerIndex, date: tx.date } : null)
   }
-  return [...latest.values()]
+  return [...latest.values()].filter((request): request is AdmissionRequest => request !== null)
 }
 
 /**
