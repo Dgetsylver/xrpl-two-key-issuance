@@ -1,4 +1,16 @@
-import { Client, RippledError, decodeMemo, fetchMPTokenOrUndefined, parseMPTokenFlags } from 'xrpl'
+import {
+  Client,
+  RippledError,
+  decodeMemo,
+  fetchMPTokenOrUndefined,
+  parseAccountRootFlags,
+  parseMPTokenFlags,
+  parseMPTokenIssuanceFlags,
+  rippleTimeToUnixTime,
+  type MPTokenIssuanceFlagsInterface,
+  type TextMemo,
+} from 'xrpl'
+import { suggestNextDealingDay } from './dealing'
 
 // GHOSTSIG only understands XRPL testnet/devnet/mainnet, so this demo is
 // pinned to the public Testnet -- the same network `XRPL_NETWORK=testnet`
@@ -78,36 +90,135 @@ export async function isAccountFunded(address: string): Promise<boolean> {
   return (await getXrpBalanceDrops(address)) !== undefined
 }
 
+/** The issuance's live state: units in issue and its flags (including the lock that suspends dealing). */
+export interface IssuanceState {
+  outstandingRaw: string
+  flags: MPTokenIssuanceFlagsInterface
+}
+
+export async function getIssuanceState(mptIssuanceId: string): Promise<IssuanceState> {
+  const client = await getClient()
+  const res = await client.command.ledgerEntry({ mpt_issuance: mptIssuanceId })
+  const node = res.result.node as { OutstandingAmount?: string; Flags?: number }
+  return { outstandingRaw: node.OutstandingAmount ?? '0', flags: parseMPTokenIssuanceFlags(node.Flags ?? 0) }
+}
+
+/** Whether the account's master key is disabled (so only its signer list can sign for it). */
+export async function isMasterKeyDisabled(address: string): Promise<boolean> {
+  const client = await getClient()
+  const res = await client.command.accountInfo({ account: address })
+  return Boolean(parseAccountRootFlags(res.result.account_data.Flags).lsfDisableMaster)
+}
+
+/** One validated, successful outgoing payment of the issuance, with its text memos decoded. */
+export interface MptPayment {
+  destination: string
+  /** Delivered amount, raw ledger units. */
+  amountRaw: string
+  hash?: string
+  ledgerIndex?: number
+  sequence?: number
+  date?: Date
+  /** Memos that decode as UTF-8 text; binary memos are skipped. */
+  memos: TextMemo[]
+}
+
+function textMemos(memos: ReadonlyArray<Parameters<typeof decodeMemo>[0]> | undefined): TextMemo[] {
+  const decoded: TextMemo[] = []
+  for (const memo of memos ?? []) {
+    try {
+      decoded.push(decodeMemo(memo))
+    } catch {
+      /* Binary or malformed memos carry no text. */
+    }
+  }
+  return decoded
+}
+
+/** Every available page of `account`'s outgoing payments of this issuance whose delivered amount is known. */
+export async function getOutgoingMptPayments(account: string, mptIssuanceId: string): Promise<MptPayment[]> {
+  const client = await getClient()
+  const { payments } = await client.getMptPaymentHistory(account, mptIssuanceId)
+  return payments.flatMap(({ transaction, deliveredAmount, hash, ledgerIndex }) => {
+    if (deliveredAmount === undefined) return []
+    // API v1 history rows carry the close time on the transaction itself.
+    const closeTime = (transaction as { date?: unknown }).date
+    return [
+      {
+        destination: String(transaction.Destination ?? ''),
+        amountRaw: deliveredAmount,
+        hash,
+        ledgerIndex,
+        sequence: typeof transaction.Sequence === 'number' ? transaction.Sequence : undefined,
+        date: typeof closeTime === 'number' ? new Date(rippleTimeToUnixTime(closeTime)) : undefined,
+        memos: textMemos(transaction.Memos),
+      },
+    ]
+  })
+}
+
+/** The dealing-day label an issue carries (memo type `mint-period`), if any. */
+export function mintPeriodOf(memos: TextMemo[]): string | undefined {
+  return memos.find((memo) => memo.type === 'mint-period' && memo.data)?.data
+}
+
 export interface MintRecord {
   period: string
   amountRaw: string
   hash?: string
+  destination?: string
+  ledgerIndex?: number
+  date?: Date
 }
 
-/** Successful outgoing mints of this issuance across every available page. */
+/** Successful outgoing issues of this issuance that carry a dealing-day memo, across every available page. */
 export async function getMintHistory(issuerAddress: string, mptIssuanceId: string): Promise<MintRecord[]> {
-  const client = await getClient()
-  const { payments } = await client.getMptPaymentHistory(issuerAddress, mptIssuanceId)
-  return payments.flatMap(({ transaction, deliveredAmount, hash }) => {
-    if (deliveredAmount === undefined) return []
-    for (const memo of transaction.Memos ?? []) {
-      try {
-        const { type, data } = decodeMemo(memo)
-        if (type === 'mint-period' && data) return [{ period: data, amountRaw: deliveredAmount, hash }]
-      } catch {
-        /* Binary or malformed memos cannot describe a mint period. */
-      }
-    }
-    return []
+  const payments = await getOutgoingMptPayments(issuerAddress, mptIssuanceId)
+  return payments.flatMap((payment) => {
+    const period = mintPeriodOf(payment.memos)
+    if (!period) return []
+    return [
+      {
+        period,
+        amountRaw: payment.amountRaw,
+        hash: payment.hash,
+        destination: payment.destination,
+        ledgerIndex: payment.ledgerIndex,
+        date: payment.date,
+      },
+    ]
   })
 }
 
-/** Suggests the next mint period: the highest numeric period on record, plus one; falls back to the current year. */
-export function suggestNextMintPeriod(history: MintRecord[]): string {
-  const numericPeriods = history
-    .map((record) => record.period)
-    .filter((period) => /^\d+$/.test(period))
-    .map((period) => Number.parseInt(period, 10))
-  if (numericPeriods.length === 0) return String(new Date().getFullYear())
-  return String(Math.max(...numericPeriods) + 1)
+/**
+ * Suggests the next dealing day (`YYYY-MM`): the month after the latest
+ * dealing day on record, or the current month when there is none. Older
+ * numeric labels still count when they name a month (`202610`); a bare year
+ * (`2026`) doesn't.
+ */
+export function suggestNextMintPeriod(history: MintRecord[], now: Date = new Date()): string {
+  return suggestNextDealingDay(
+    history.map((record) => record.period),
+    now,
+  )
+}
+
+export type ProposalStatus =
+  | { status: 'pending' }
+  | { status: 'done'; hash?: string }
+  | { status: 'superseded' }
+
+/**
+ * Checks a prepared multisig proposal: still `pending` while the account's
+ * sequence hasn't moved past it, `done` once a successful payment with that
+ * sequence is on the ledger, `superseded` if something else used the
+ * sequence (the proposal can then never be submitted).
+ */
+export async function getProposalStatus(account: string, sequence: number, mptIssuanceId: string): Promise<ProposalStatus> {
+  const client = await getClient()
+  const info = await client.command.accountInfo({ account, ledger_index: 'validated' })
+  if (info.result.account_data.Sequence <= sequence) return { status: 'pending' }
+  const payments = await getOutgoingMptPayments(account, mptIssuanceId)
+  const match = payments.find((payment) => payment.sequence === sequence)
+  return match ? { status: 'done', hash: match.hash } : { status: 'superseded' }
 }

@@ -16,16 +16,28 @@ describe('typed mint history and display units', () => {
       payments: [
         {
           transaction: {
+            Destination: 'rDesk',
+            Sequence: 7,
+            date: 800_000_000,
             Memos: [{ Memo: { MemoData: 'FF' } }, encodeMemo({ type: 'mint-period', data: '2026' })],
           },
           deliveredAmount: '3',
           hash: 'hash',
+          ledgerIndex: 40,
         },
         { transaction: { Memos: [encodeMemo({ type: 'mint-period', data: '2027' })] } },
       ],
     } as never)
     expect(await getMintHistory('issuer', 'issuance')).toEqual([
-      { period: '2026', amountRaw: '3', hash: 'hash' },
+      {
+        period: '2026',
+        amountRaw: '3',
+        hash: 'hash',
+        destination: 'rDesk',
+        ledgerIndex: 40,
+        // Ripple epoch 800,000,000 s = 2025-05-08T06:13:20Z.
+        date: new Date('2025-05-08T06:13:20Z'),
+      },
     ])
     expect(history).toHaveBeenCalledWith('issuer', 'issuance')
   })
