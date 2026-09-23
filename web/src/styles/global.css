@@ -41,10 +41,10 @@
 *::before,
 *::after {
   box-sizing: border-box;
-}
-
-html {
-  font-variant-numeric: tabular-nums;
+  /* Tabular figures everywhere, as the handoff sets on the root. Inheriting
+     from html isn't enough: every `font:` shorthand below (body included)
+     resets font-variant-numeric to normal, hence !important here. */
+  font-variant-numeric: tabular-nums !important;
 }
 
 body {
