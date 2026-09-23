@@ -771,6 +771,43 @@ textarea.input {
   text-align: right;
 }
 
+/* ---------- Admission request ---------- */
+
+.card-subtitle {
+  font: 500 18px/1.25 var(--font-serif);
+}
+
+.request-address {
+  font-size: 15px;
+}
+
+.checklist {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px;
+  border: 1px dashed var(--brand-dashed);
+  cursor: pointer;
+}
+
+.checklist input {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  accent-color: var(--brand-accent);
+  flex-shrink: 0;
+}
+
+.checklist-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.checklist-title {
+  font-weight: 500;
+}
+
 /* ---------- Status messages (errors and notices) ---------- */
 
 .status {

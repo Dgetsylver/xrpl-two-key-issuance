@@ -369,7 +369,8 @@ const seatChips = (keySet: 'register' | 'desk') => brand.seats[keySet]
           : 'The Desk holds no units between dealing days.'
       const cta =
         seat.keySet === 'register'
-          ? `<a class="btn btn-primary" href="${esc(withBase('/propose-mint'))}">Dealing day</a>`
+          ? `<a class="btn btn-primary" href="${esc(withBase('/propose-mint'))}">Dealing day</a>
+             <a class="btn btn-secondary" href="${esc(withBase('/admit'))}">Admit investor</a>`
           : `<a class="btn btn-primary" href="${esc(withBase('/propose-disbursement'))}">Deliver units</a>`
       accountBody.innerHTML = `
         <p class="body-2">Connected as the <strong style="color:var(--role-${seat.keySet})">${esc(seat.name)}</strong> seat of the ${setName} key. ${esc(tail)}</p>

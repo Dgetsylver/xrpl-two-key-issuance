@@ -80,12 +80,19 @@ const NON_SIGNER_BODY: Record<KeySet, string> = {
   desk: `Deliveries are made by Dealing Desk keyholders: ${brand.seats.desk.slice(0, -1).join(', ')} and ${brand.seats.desk.at(-1)}. Two of the three sign to sell issued units to each investor who ordered them.`,
 }
 
-/** The card shown when a page needs a key the viewer doesn't hold: explains the role, no error. */
-export function nonSignerHtml(needs: KeySet, role: RoleKind): string {
+/** The non-signer body for the Admit investor page. */
+export const NON_SIGNER_ADMIT =
+  'Admission is done by Register keyholders. They put an account on the register, relying on the KYC the Dealing Desk has already completed off-ledger.'
+
+/**
+ * The card shown when a page needs a key the viewer doesn't hold: explains
+ * the role, no error. `body` replaces the key set's default explanation.
+ */
+export function nonSignerHtml(needs: KeySet, role: RoleKind, body: string = NON_SIGNER_BODY[needs]): string {
   const visitor = role === 'visitor'
   const pill = visitor ? "You're viewing as a visitor" : `You're connected as ${ROLE_WITH_ARTICLE[role]}`
   return `<span class="role-pill" style="align-self:flex-start"><span class="role-dot" data-role="${esc(role)}"></span>${esc(pill)}</span>
-    <p>${esc(NON_SIGNER_BODY[needs])}</p>
+    <p>${esc(body)}</p>
     <p class="meta">${visitor ? 'Keyholders connect a passkey to sign. ' : ''}Nothing to sign here. The result appears on the fund overview and in the register ledger.</p>
     <div class="row-wrap">
       ${visitor ? '<button type="button" class="btn btn-primary" data-connect>Connect passkey</button>' : ''}
