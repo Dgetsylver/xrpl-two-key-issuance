@@ -162,6 +162,82 @@ export async function getOutgoingMptPayments(account: string, mptIssuanceId: str
   })
 }
 
+/**
+ * One validated, successful transaction that names this issuance (in
+ * `MPTokenIssuanceID` or an MPT `Amount`), from an account's history, with
+ * its text memos decoded. The issuer's history carries more than its own
+ * transactions: the ledger also files every holder's MPToken change there,
+ * so a holder's self-authorisation (an admission request) shows up too.
+ */
+export interface IssuanceTransaction {
+  type: string
+  account: string
+  holder?: string
+  flags: number
+  memos: TextMemo[]
+  hash?: string
+  ledgerIndex?: number
+  sequence?: number
+  date?: Date
+}
+
+/** Reads one API v1 `account_tx` row. Undefined unless it's validated, succeeded and names this issuance. */
+export function issuanceTransactionOf(
+  row: { tx?: unknown; meta?: unknown; validated?: unknown },
+  mptIssuanceId: string,
+): IssuanceTransaction | undefined {
+  const tx = row.tx as Record<string, unknown> | undefined
+  const meta = row.meta as { TransactionResult?: unknown } | string | undefined
+  if (row.validated !== true || !tx || typeof meta !== 'object' || meta.TransactionResult !== 'tesSUCCESS') return undefined
+  const amount = tx.Amount as { mpt_issuance_id?: unknown } | string | undefined
+  const namesIssuance =
+    tx.MPTokenIssuanceID === mptIssuanceId || (typeof amount === 'object' && amount !== null && amount.mpt_issuance_id === mptIssuanceId)
+  if (!namesIssuance || typeof tx.TransactionType !== 'string' || typeof tx.Account !== 'string') return undefined
+  return {
+    type: tx.TransactionType,
+    account: tx.Account,
+    holder: typeof tx.Holder === 'string' ? tx.Holder : undefined,
+    flags: typeof tx.Flags === 'number' ? tx.Flags : 0,
+    memos: textMemos(tx.Memos as Parameters<typeof textMemos>[0]),
+    hash: typeof tx.hash === 'string' ? tx.hash : undefined,
+    ledgerIndex: typeof tx.ledger_index === 'number' ? tx.ledger_index : undefined,
+    sequence: typeof tx.Sequence === 'number' ? tx.Sequence : undefined,
+    date: typeof tx.date === 'number' ? new Date(rippleTimeToUnixTime(tx.date)) : undefined,
+  }
+}
+
+/** How many `account_tx` pages (of up to 200 rows) to read for an issuance's history before stopping. */
+const ISSUANCE_HISTORY_PAGES = 10
+
+/**
+ * Every transaction in `account`'s available history that names this
+ * issuance, newest first (see `IssuanceTransaction`). Reads at most
+ * `ISSUANCE_HISTORY_PAGES` pages; a failed page throws.
+ */
+export async function getIssuanceTransactions(account: string, mptIssuanceId: string): Promise<IssuanceTransaction[]> {
+  const client = await getClient()
+  const found: IssuanceTransaction[] = []
+  let marker: unknown
+  for (let page = 0; page < ISSUANCE_HISTORY_PAGES; page++) {
+    const { result } = await client.request({
+      command: 'account_tx',
+      account,
+      api_version: 1,
+      binary: false,
+      forward: false,
+      limit: 200,
+      marker,
+    })
+    for (const row of result.transactions) {
+      const entry = issuanceTransactionOf(row, mptIssuanceId)
+      if (entry) found.push(entry)
+    }
+    marker = result.marker
+    if (marker == null) break
+  }
+  return found
+}
+
 /** The dealing-day label an issue carries (memo type `mint-period`), if any. */
 export function mintPeriodOf(memos: TextMemo[]): string | undefined {
   return memos.find((memo) => memo.type === 'mint-period' && memo.data)?.data
