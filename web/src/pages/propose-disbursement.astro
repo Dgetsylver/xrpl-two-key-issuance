@@ -17,6 +17,7 @@ import Layout from '../layouts/Layout.astro'
       <div class="field">
         <label for="disbursement-destination">Destination address</label>
         <input id="disbursement-destination" name="destination" placeholder="r..." required />
+        <div id="destination-warning" style="display:none; margin-top: 0.5rem;"></div>
       </div>
       <div class="field">
         <label for="disbursement-amount">Amount (Gton)</label>
@@ -38,11 +39,14 @@ import Layout from '../layouts/Layout.astro'
   import { buildProposalPaymentTx } from '../lib/tx'
   import { signCeremonyPayload, buildHandoffMessage } from '../lib/ceremony'
   import { describePaymentTx } from '../lib/preview'
+  import { destinationReadinessWarning } from '../lib/xrplClient'
   import { fromGton } from '../lib/gton'
   import QRCode from 'qrcode'
 
   const pageError = document.getElementById('page-error')!
   const disbursementForm = document.getElementById('disbursement-form') as HTMLFormElement
+  const destinationInput = document.getElementById('disbursement-destination') as HTMLInputElement
+  const destinationWarning = document.getElementById('destination-warning')!
   const resultCard = document.getElementById('result-card')!
   const resultBody = document.getElementById('result-body')!
 
@@ -56,6 +60,26 @@ import Layout from '../layouts/Layout.astro'
     const config = await loadPublicConfig()
     const governance = requireGovernance(config)
     const mptIssuanceId = requireMptIssuanceId(config)
+
+    async function checkDestination() {
+      const destination = destinationInput.value.trim()
+      if (!destination) {
+        destinationWarning.style.display = 'none'
+        return
+      }
+      try {
+        const warning = await destinationReadinessWarning(destination, mptIssuanceId, config.token.ticker)
+        if (warning) {
+          statusMessage(destinationWarning, 'info', `\u26a0\ufe0f ${warning}`)
+          destinationWarning.style.display = 'block'
+        } else {
+          destinationWarning.style.display = 'none'
+        }
+      } catch {
+        destinationWarning.style.display = 'none'
+      }
+    }
+    destinationInput.addEventListener('blur', checkDestination)
 
     onConnectionChange((address) => {
       connectedAddress = address ?? undefined
@@ -85,6 +109,7 @@ import Layout from '../layouts/Layout.astro'
       const amountInput = String(formData.get('amount') ?? '').trim()
       const submitButton = disbursementForm.querySelector('button[type="submit"]') as HTMLButtonElement
       submitButton.disabled = true
+      await checkDestination()
       try {
         const amountRaw = fromGton(amountInput)
         const tx = await buildProposalPaymentTx(governance.address, destination, mptIssuanceId, amountRaw, governance.quorum)

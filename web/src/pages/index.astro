@@ -49,6 +49,7 @@ import { withBase } from '../lib/paths'
       <div class="field">
         <label for="send-destination">Destination address</label>
         <input id="send-destination" name="destination" placeholder="r..." required />
+        <div id="send-destination-warning" style="display:none; margin-top: 0.5rem;"></div>
       </div>
       <div class="field">
         <label for="send-amount">Amount (Gton)</label>
@@ -94,7 +95,7 @@ import { withBase } from '../lib/paths'
   import { onConnectionChange } from '../lib/connect'
   import { ghostsigSign, GhostsigError } from '../lib/ghostsig'
   import { buildMptAuthorizeTx, buildMptPaymentTx } from '../lib/tx'
-  import { getOutstandingSupplyRaw, getMptHolding, getXrpBalanceDrops, isAccountFunded, TESTNET_EXPLORER_BASE } from '../lib/xrplClient'
+  import { getOutstandingSupplyRaw, getMptHolding, getXrpBalanceDrops, isAccountFunded, destinationReadinessWarning, TESTNET_EXPLORER_BASE } from '../lib/xrplClient'
   import { toGton, fromGton } from '../lib/gton'
 
   let connectedAddress: string | undefined
@@ -107,6 +108,8 @@ import { withBase } from '../lib/paths'
   const authorizeArea = document.getElementById('authorize-area')!
   const sendCard = document.getElementById('send-card')!
   const sendForm = document.getElementById('send-form') as HTMLFormElement
+  const sendDestinationInput = document.getElementById('send-destination') as HTMLInputElement
+  const sendDestinationWarning = document.getElementById('send-destination-warning')!
   const sendResult = document.getElementById('send-result')!
 
   function statusMessage(el: HTMLElement, kind: 'info' | 'success' | 'error', text: string) {
@@ -202,12 +205,33 @@ import { withBase } from '../lib/paths'
       }
     })
 
+    async function checkSendDestination() {
+      const destination = sendDestinationInput.value.trim()
+      if (!destination || !config.mptIssuanceId) {
+        sendDestinationWarning.style.display = 'none'
+        return
+      }
+      try {
+        const warning = await destinationReadinessWarning(destination, config.mptIssuanceId, config.token.ticker)
+        if (warning) {
+          statusMessage(sendDestinationWarning, 'info', `\u26a0\ufe0f ${warning}`)
+          sendDestinationWarning.style.display = 'block'
+        } else {
+          sendDestinationWarning.style.display = 'none'
+        }
+      } catch {
+        sendDestinationWarning.style.display = 'none'
+      }
+    }
+    sendDestinationInput.addEventListener('blur', checkSendDestination)
+
     sendForm.addEventListener('submit', async (event) => {
       event.preventDefault()
       if (!connectedAddress || !config.mptIssuanceId) return
       const formData = new FormData(sendForm)
       const destination = String(formData.get('destination') ?? '').trim()
       const amountInput = String(formData.get('amount') ?? '').trim()
+      await checkSendDestination()
       try {
         const amountRaw = fromGton(amountInput)
         const tx = buildMptPaymentTx(connectedAddress, destination, config.mptIssuanceId, amountRaw)

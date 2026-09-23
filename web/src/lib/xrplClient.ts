@@ -57,6 +57,22 @@ export async function getMptHolding(address: string, mptIssuanceId: string): Pro
   }
 }
 
+/**
+ * A human-readable warning if `address` can't yet receive this MPT --
+ * it hasn't self-authorized, or doesn't exist on the ledger yet -- or
+ * `null` if it looks ready. A Payment to a destination that hasn't
+ * authorized fails once it's actually submitted; for a multisig
+ * ceremony that's only discovered when the *last* signature finally
+ * reaches quorum, wasting everyone's part in collecting it. Checking
+ * up front (when proposing, and again before adding a later signature)
+ * catches this before anyone signs anything.
+ */
+export async function destinationReadinessWarning(address: string, mptIssuanceId: string, ticker: string): Promise<string | null> {
+  const holding = await getMptHolding(address, mptIssuanceId)
+  if (holding.authorized) return null
+  return `${address} hasn't authorized themself to hold ${ticker} yet (or doesn't exist on Testnet) — sending to it will fail until it does. They can self-authorize from the dashboard once they connect with GhostSig.`
+}
+
 /** Returns the account's XRP balance in drops, or `undefined` if it isn't funded/activated yet. */
 export async function getXrpBalanceDrops(address: string): Promise<string | undefined> {
   const client = await getClient()

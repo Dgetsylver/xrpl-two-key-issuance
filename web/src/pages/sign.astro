@@ -27,6 +27,7 @@ import Layout from '../layouts/Layout.astro'
   <section class="card" id="preview-card" style="display:none;">
     <h2>Proposal</h2>
     <div id="preview-body"></div>
+    <div id="destination-warning" style="display:none; margin-top: 0.5rem;"></div>
   </section>
 
   <section class="card" id="sign-card" style="display:none;">
@@ -42,6 +43,7 @@ import Layout from '../layouts/Layout.astro'
   import { onConnectionChange } from '../lib/connect'
   import { signCeremonyPayload, buildHandoffMessage } from '../lib/ceremony'
   import { describePaymentTx } from '../lib/preview'
+  import { destinationReadinessWarning } from '../lib/xrplClient'
   import { urlParamToBlob } from '../lib/blob'
   import QRCode from 'qrcode'
 
@@ -52,6 +54,7 @@ import Layout from '../layouts/Layout.astro'
   const pasteCard = document.getElementById('paste-card')!
   const previewCard = document.getElementById('preview-card')!
   const previewBody = document.getElementById('preview-body')!
+  const destinationWarning = document.getElementById('destination-warning')!
   const signCard = document.getElementById('sign-card')!
   const pageError = document.getElementById('page-error')!
   const signButton = document.getElementById('sign-button') as HTMLButtonElement
@@ -91,6 +94,16 @@ import Layout from '../layouts/Layout.astro'
       pasteCard.style.display = 'none'
       signCard.style.display = 'block'
       updateSignButtonVisibility()
+      destinationWarning.style.display = 'none'
+      if (typeof tx.Destination === 'string' && config.mptIssuanceId) {
+        destinationReadinessWarning(tx.Destination, config.mptIssuanceId, config.token.ticker)
+          .then((warning) => {
+            if (!warning) return
+            statusMessage(destinationWarning, 'info', `\u26a0\ufe0f ${warning}`)
+            destinationWarning.style.display = 'block'
+          })
+          .catch(() => {})
+      }
     }
 
     const params = new URLSearchParams(window.location.search)
