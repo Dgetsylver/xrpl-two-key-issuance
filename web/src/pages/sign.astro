@@ -99,7 +99,7 @@ import Layout from '../layouts/Layout.astro'
   import { urlParamToBlob } from '../lib/blob'
   import { brand } from '../brand'
   import { esc, formatDate, shortAddress } from '../lib/format'
-  import { ROLE_WITH_ARTICLE, keySetAccount, seatOn, seatsOf, signerRole } from '../lib/role'
+  import { ROLE_WITH_ARTICLE, keySetAccount, seatFor, seatOn, seatsOf, signerRole } from '../lib/role'
   import { chipsHtml, contractNoteHtml, keyMeterHtml, problemPanelHtml, readinessHtml, renderHandoff, sentenceHtml } from '../lib/ui'
   import type { ProblemStatus } from '../lib/outcome'
   import { withBase } from '../lib/paths'
@@ -156,7 +156,13 @@ import Layout from '../layouts/Layout.astro'
 
       const first = signersOf(tx)[0]
       if (unrecognised || !preview.keySet) {
-        $('proposed-by').textContent = first ? `Signed so far by ${shortAddress(first)}` : 'Not signed by anyone yet'
+        // Name a published seat even when the transaction matches no procedure.
+        const firstSeat = first ? seatFor(config, first) : undefined
+        $('proposed-by').textContent = firstSeat
+          ? `Proposed by the ${firstSeat.name}${firstSeat.keySet === 'desk' ? ' seat' : ''}`
+          : first
+            ? `Signed so far by ${shortAddress(first)}`
+            : 'Not signed by anyone yet'
         $('unrecognised-sentence').textContent = preview.sentence
         $('raw-fields').textContent = preview.rawFields.map(([key, value]) => `${key}: ${value}`).join('\n')
         signButton.hidden = true
@@ -187,7 +193,7 @@ import Layout from '../layouts/Layout.astro'
       $('destination-line').innerHTML = destination ? `To <span class="address">${esc(destination)}</span>${esc(destinationName)}` : ''
       $('note').innerHTML = preview.note ? contractNoteHtml(preview.note, ctx.ticker, { compact: true }) : ''
 
-      $('seat-chips').innerHTML = chipsHtml(seatsOf(config, keySet), { signed, you: address })
+      $('seat-chips').innerHTML = chipsHtml(seatsOf(config, keySet), { signed, you: address, emphasiseYou: false })
       $('key-meter').innerHTML = keyMeterHtml(keySet, signed.size, quorum)
       const alreadySigned = signed.has(address)
       $('already-signed').hidden = !alreadySigned

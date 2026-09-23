@@ -26,13 +26,18 @@ export function statusHtml(kind: 'error' | 'success' | 'info', text: string): st
   return `<div class="status ${kind === 'info' ? '' : kind}" role="${kind === 'error' ? 'alert' : 'status'}">${esc(text)}</div>`
 }
 
-/** Seat chips for a key set. `signed` seats are solid with a check; `you` is bold and suffixed. */
-export function chipsHtml(seats: Seat[], opts: { signed?: ReadonlySet<string>; you?: string } = {}): string {
+/**
+ * Seat chips for a key set. `signed` seats are solid with a check; `you` is
+ * suffixed " · you", and bold unless `emphasiseYou` is false (the co-sign
+ * strip keeps it a plain outlined chip; the proposer's own chip is bold).
+ */
+export function chipsHtml(seats: Seat[], opts: { signed?: ReadonlySet<string>; you?: string; emphasiseYou?: boolean } = {}): string {
+  const emphasise = opts.emphasiseYou ?? true
   return `<div class="row-wrap" style="gap:6px">${seats
     .map((seat) => {
       const signed = opts.signed?.has(seat.address) ?? false
       const you = seat.address === opts.you
-      const classes = ['chip', seat.keySet === 'desk' ? 'desk' : '', signed ? 'signed' : '', you && !signed ? 'you' : '']
+      const classes = ['chip', seat.keySet === 'desk' ? 'desk' : '', signed ? 'signed' : '', you && !signed && emphasise ? 'you' : '']
         .filter(Boolean)
         .join(' ')
       const label = `${seat.name}${you ? ' · you' : ''}${signed ? ' ✓' : ''}`
