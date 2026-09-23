@@ -206,6 +206,9 @@ covers:
   admission with a memo; per-holder lock and unlock with reason memos; and a
   lost-key replacement (clawback from a locked holder, then re-issue to a new
   admitted wallet, with a shared memo)
+- The setup scripts themselves, run as separate processes: the RequireAuth
+  setup order, reruns that change nothing, resuming an interrupted issuer
+  setup, and the unchanged order with RequireAuth off
 - Multisig-gated minting, including insufficient-signature, disabled-master-
   key, and unauthorized-destination failure cases
 - Governance setup and multisig redistribution
