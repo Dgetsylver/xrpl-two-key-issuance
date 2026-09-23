@@ -1,3 +1,5 @@
+> Follow-up: [the SDK stack cleanup](aha-sdk-stack-cleanup.md) implements the account, multisig, optional-read, history, memo and amount opportunities below. This document records the earlier PR #9 baseline.
+
 # Carbon Coin: aha prototype migration and DevX review
 
 ## Scope and baseline
