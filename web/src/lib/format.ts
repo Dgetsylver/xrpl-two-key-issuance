@@ -3,15 +3,25 @@ export function shortAddress(address: string): string {
   return address.length > 12 ? `${address.slice(0, 6)}…${address.slice(-4)}` : address
 }
 
+/**
+ * Three-letter months, fixed: `toLocaleDateString('en-GB', { month: 'short' })`
+ * gives `Sept` for September in newer ICU data, and differs by browser.
+ */
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+function dayAndMonth(date: Date): string {
+  return `${String(date.getDate()).padStart(2, '0')} ${SHORT_MONTHS[date.getMonth()]}`
+}
+
 /** `01 Sep 2026` */
 export function formatDate(date: Date): string {
-  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  return `${dayAndMonth(date)} ${date.getFullYear()}`
 }
 
 /** `01 Sep`, or `01 Sep 2025` outside the current year. */
 export function formatShortDate(date: Date, now: Date = new Date()): string {
   if (date.getFullYear() !== now.getFullYear()) return formatDate(date)
-  return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+  return dayAndMonth(date)
 }
 
 /** Escapes text for interpolation into innerHTML templates. */
