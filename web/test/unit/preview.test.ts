@@ -38,13 +38,13 @@ describe('co-sign sentences, decoded from the transaction', () => {
     const preview = describeProposal(payment(DESK, INVESTOR, '25000000000000', [{ type: 'order-ref', data: 'ORD-2026-10-014' }]), ctx)
     expect(preview.kind).toBe('deliver')
     expect(preview.keySet).toBe('desk')
-    expect(preview.sentence).toBe('Deliver 25,000.000 HQUAY to rLBbnq…gARY, order ORD-2026-10-014')
+    expect(preview.sentence).toBe('Deliver 25,000.000 HQUAY to rLBbnq…gARY · order ORD-2026-10-014')
     expect(preview.doneSentence).toBe('25,000.000 HQUAY delivered to rLBbnq…gARY, order ORD-2026-10-014.')
     expect(preview.offProcedure).toBeUndefined()
   })
 
   it('says when a delivery carries no order reference', () => {
-    expect(describeProposal(payment(DESK, INVESTOR, '1000000'), ctx).sentence).toBe('Deliver 0.001 HQUAY to rLBbnq…gARY, no order reference')
+    expect(describeProposal(payment(DESK, INVESTOR, '1000000'), ctx).sentence).toBe('Deliver 0.001 HQUAY to rLBbnq…gARY · no order reference')
   })
 
   it('reads a Desk payment back to the Register as a return for cancellation', () => {
@@ -75,7 +75,7 @@ describe('OFF-PROCEDURE: valid, signable, flagged', () => {
 
   it('shows an amount finer than 3 decimals exactly, and flags it, for deliveries and issues alike', () => {
     const deliver = describeProposal(payment(DESK, INVESTOR, '25000000999999', [{ type: 'order-ref', data: 'ORD-1' }]), ctx)
-    expect(deliver.sentence).toBe('Deliver 25,000.000999999 HQUAY to rLBbnq…gARY, order ORD-1')
+    expect(deliver.sentence).toBe('Deliver 25,000.000999999 HQUAY to rLBbnq…gARY · order ORD-1')
     expect(deliver.offProcedure).toBe(FINER_THAN_UNITS)
     const issue = describeProposal(payment(REGISTER, DESK, '235187958999999', [{ type: 'mint-period', data: '2026-10' }]), ctx)
     expect(issue.sentence).toBe('Issue 235,187.958999999 HQUAY to the Dealing Desk for dealing day 2026-10')

@@ -37,7 +37,7 @@ export interface ProposalPreview {
   kind: ProposalKind
   /** Which key set must sign. Undefined for unrecognised proposals. */
   keySet?: KeySet
-  /** "Issue 235,187.958 HQUAY to the Dealing Desk for dealing day 2026-10 (€2,450,000 ÷ NAV €10.4172)" */
+  /** "Issue 235,187.958 HQUAY to the Dealing Desk for dealing day 2026-10 (€2,450,000 ÷ NAV €10.4172)", "Deliver 25,000.000 HQUAY to rAb7Tq…Q7Kx · order ORD-2026-10-014" */
   sentence: string
   /** The past-tense result line, once quorum is met. */
   doneSentence: string
@@ -190,7 +190,8 @@ export function describeProposal(tx: Record<string, unknown>, ctx: ProposalConte
     kind: 'deliver',
     keySet: 'desk',
     orderRef,
-    sentence: `Deliver ${units} to ${shortAddress(destination)}${orderRef ? `, order ${orderRef}` : ', no order reference'}`,
+    // The relay and co-sign line use a middle dot; the past-tense result keeps the comma, as in the handoff.
+    sentence: `Deliver ${units} to ${shortAddress(destination)}${orderRef ? ` · order ${orderRef}` : ' · no order reference'}`,
     doneSentence: `${units} delivered to ${shortAddress(destination)}${orderRef ? `, order ${orderRef}` : ''}.`,
     offProcedure: isFinerThanUnits(amountRaw) ? FINER_THAN_UNITS : undefined,
   }
