@@ -29,7 +29,7 @@ describe('register ledger rows', () => {
     expect(rows.map((r) => r.stamp)).toEqual(['REDEEM', 'DELIVER', 'ISSUE'])
     expect(rows[2]).toMatchObject({
       title: 'Issued 235,187.958 HQUAY to the Dealing Desk',
-      memo: '2026-10 · €2,450,000 ÷ €10.4172 (illustrative)',
+      memo: 'DD 2026-10 · €2,450,000 ÷ €10.4172 (illustrative)',
       hash: 'H10',
     })
     expect(rows[2]!.offProcedure).toBeUndefined()
@@ -45,7 +45,7 @@ describe('register ledger rows', () => {
       issuerPayments: [pay(INVESTOR, '1000000000', 2, [{ type: 'mint-period', data: '2026-10' }]), pay(DESK, '1000000000', 1)],
       deskPayments: [],
     })
-    expect(rows[0]).toMatchObject({ title: 'Issued 1.000 HQUAY directly to rLBbnq…gARY', memo: '2026-10', offProcedure: 'Skipped the Dealing Desk' })
+    expect(rows[0]).toMatchObject({ title: 'Issued 1.000 HQUAY directly to rLBbnq…gARY', memo: 'DD 2026-10', offProcedure: 'Skipped the Dealing Desk' })
     expect(rows[1]).toMatchObject({ memo: '(no dealing-day memo)', offProcedure: 'No dealing-day memo' })
   })
 
@@ -64,6 +64,13 @@ describe('register ledger rows', () => {
       pay(DESK, '235187958000000', 0),
     ]
     const rows = buildRegisterLedger({ issuer: REGISTER, desk: DESK, ticker: 'HQUAY', issuerPayments: issues, deskPayments: [] })
+    expect(rows.map((row) => row.memo)).toEqual([
+      'august 2026 NOAA total',
+      'DD 2026-10',
+      'DD 2026-10 · €2,450,000 ÷ €10.4172 (illustrative)',
+      'DD 2026-10 · €2,450,000 ÷ €10.4172 (illustrative)',
+      '(no dealing-day memo)',
+    ])
     expect(rows.map((row) => row.offProcedure)).toEqual([
       "Dealing day isn't a YYYY-MM month",
       "Units don't match the contract note",

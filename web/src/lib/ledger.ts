@@ -59,10 +59,14 @@ function issueRow(payment: MptPayment, input: LedgerInput): LedgerRow {
   const units = `${formatAmountExact(payment.amountRaw)} ${input.ticker}`
   const day = mintPeriod(payment.memos)
   const toDesk = payment.destination === input.desk
+  // `DD 2026-09` tags a dealing day; the € figures only when the units are the note's. Other labels show as written.
   let memo = day ?? '(no dealing-day memo)'
-  if (day && matchesContractNote(day, payment.amountRaw)) {
-    const note = contractNote(day)
-    memo = `${day} · ${formatEuro(note.cash, 0)} ÷ ${formatEuro(note.nav, 4)} (illustrative)`
+  if (day && isDealingDay(day)) {
+    memo = `DD ${day}`
+    if (matchesContractNote(day, payment.amountRaw)) {
+      const note = contractNote(day)
+      memo += ` · ${formatEuro(note.cash, 0)} ÷ ${formatEuro(note.nav, 4)} (illustrative)`
+    }
   }
   const deviation = issueDeviation({ toDesk, day, amountRaw: payment.amountRaw })
   return {
