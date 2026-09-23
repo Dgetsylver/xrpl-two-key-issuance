@@ -313,7 +313,7 @@ import Layout from '../layouts/Layout.astro'
 
     requireAuth = await requireAuthRead
     if (!requireAuth) {
-      // An open issuance: nothing to admit. Say so rather than offer a ceremony the ledger would reject.
+      // An open issuance: nothing to admit. Say so rather than propose a ceremony the ledger would reject.
       $('not-required').hidden = false
       $('account-field').hidden = true
       admitButton.disabled = true

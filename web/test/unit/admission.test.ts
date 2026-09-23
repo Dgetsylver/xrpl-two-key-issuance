@@ -55,7 +55,7 @@ describe('reading the issuance history (account_tx, API v1)', () => {
     )
     expect(entry).toMatchObject({ type: 'MPTokenAuthorize', account: REGISTER, holder: INVESTOR, flags: 0, hash: 'ABC', ledgerIndex: 21000000, sequence: 7 })
     expect(entry?.memos).toEqual([expect.objectContaining({ type: 'kyc-ref', data: 'ADM-0001 · Desk KYC reliance' })])
-    // Ripple epoch 843518670 is 946684800 s after the Unix epoch.
+    // XRPL time 843518670 counts seconds from 2000-01-01 UTC, 946684800 s after the Unix epoch.
     expect(entry?.date?.toISOString()).toBe('2026-09-23T22:44:30.000Z')
   })
 
