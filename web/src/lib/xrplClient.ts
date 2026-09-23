@@ -1,4 +1,5 @@
-import { Client } from 'xrpl'
+import { Client, parseMPTokenFlags } from 'xrpl'
+import { isLedgerError, readMptHolding } from '../../../src/lib/ledger.js'
 
 // GHOSTSIG only understands XRPL testnet/devnet/mainnet, so this demo is
 // pinned to the public Testnet -- the same network `XRPL_NETWORK=testnet`
@@ -25,9 +26,8 @@ export async function getClient(): Promise<Client> {
 
 export async function getOutstandingSupplyRaw(mptIssuanceId: string): Promise<string> {
   const client = await getClient()
-  const res = await client.request({ command: 'ledger_entry', mpt_issuance: mptIssuanceId })
-  const node = res.result.node as { OutstandingAmount?: string }
-  return node.OutstandingAmount ?? '0'
+  const res = await client.command.ledgerEntry({ mpt_issuance: mptIssuanceId })
+  return res.result.node.OutstandingAmount
 }
 
 export interface MptHolding {
@@ -36,24 +36,14 @@ export interface MptHolding {
   locked: boolean
 }
 
-const LSF_MPT_LOCKED = 0x00000001
-
-/** Reads a holder's MPT authorization/balance/lock status. Never throws -- an unauthorized/unfunded address just reads as `{ authorized: false, balanceRaw: '0', locked: false }`. */
+/** Read confirmed holdings. A missing entry is distinct from a failed network read. */
 export async function getMptHolding(address: string, mptIssuanceId: string): Promise<MptHolding> {
   const client = await getClient()
-  try {
-    const res = await client.request({ command: 'account_objects', account: address, type: 'mptoken' })
-    const mptoken = res.result.account_objects.find(
-      (o) => (o as { MPTokenIssuanceID?: string }).MPTokenIssuanceID === mptIssuanceId,
-    ) as { MPTAmount?: string; Flags?: number } | undefined
-    if (!mptoken) return { authorized: false, balanceRaw: '0', locked: false }
-    return {
-      authorized: true,
-      balanceRaw: mptoken.MPTAmount ?? '0',
-      locked: ((mptoken.Flags ?? 0) & LSF_MPT_LOCKED) !== 0,
-    }
-  } catch {
-    return { authorized: false, balanceRaw: '0', locked: false }
+  const token = await readMptHolding(client, address, mptIssuanceId)
+  return {
+    authorized: token !== undefined,
+    balanceRaw: token?.MPTAmount ?? '0',
+    locked: token ? Boolean(parseMPTokenFlags(token.Flags).lsfMPTLocked) : false,
   }
 }
 
@@ -69,6 +59,7 @@ export async function getMptHolding(address: string, mptIssuanceId: string): Pro
  */
 export async function destinationReadinessWarning(address: string, mptIssuanceId: string, ticker: string): Promise<string | null> {
   const holding = await getMptHolding(address, mptIssuanceId)
+  if (holding.locked) return `${address}'s ${ticker} holding is locked — transfers will fail until the issuer unlocks it.`
   if (holding.authorized) return null
   return `${address} hasn't authorized themself to hold ${ticker} yet (or doesn't exist on Testnet) — sending to it will fail until it does. They can self-authorize from the dashboard once they connect with GhostSig.`
 }
@@ -77,10 +68,11 @@ export async function destinationReadinessWarning(address: string, mptIssuanceId
 export async function getXrpBalanceDrops(address: string): Promise<string | undefined> {
   const client = await getClient()
   try {
-    const res = await client.request({ command: 'account_info', account: address })
+    const res = await client.command.accountInfo({ account: address })
     return res.result.account_data.Balance
-  } catch {
-    return undefined
+  } catch (error) {
+    if (isLedgerError(error, 'actNotFound')) return undefined
+    throw error
   }
 }
 
@@ -97,14 +89,14 @@ export async function isAccountFunded(address: string): Promise<boolean> {
  */
 export async function getAccountSequence(address: string): Promise<number> {
   const client = await getClient()
-  const res = await client.request({ command: 'account_info', account: address })
+  const res = await client.command.accountInfo({ account: address })
   return res.result.account_data.Sequence
 }
 
 /** The current network reference (base) transaction cost, in drops. */
 export async function getBaseFeeDrops(): Promise<bigint> {
   const client = await getClient()
-  const res = await client.request({ command: 'fee' })
+  const res = await client.command.fee()
   return BigInt(res.result.drops.base_fee)
 }
 
@@ -143,21 +135,21 @@ function hexToUtf8(hex: string): string {
  */
 export async function getMintHistory(issuerAddress: string): Promise<MintRecord[]> {
   const client = await getClient()
-  const res = await client.request({ command: 'account_tx', account: issuerAddress, limit: 200 })
+  const res = await client.command.accountTx({ account: issuerAddress, limit: 200, api_version: 1 })
   const records: MintRecord[] = []
   for (const entry of res.result.transactions ?? []) {
-    const tx = (entry as { tx?: Record<string, unknown>; tx_json?: Record<string, unknown> }).tx ?? (entry as { tx_json?: Record<string, unknown> }).tx_json
+    const tx = entry.tx
     if (!tx || tx.TransactionType !== 'Payment') continue
-    const memos = (tx.Memos ?? []) as Array<{ Memo?: { MemoType?: string; MemoData?: string } }>
+    const memos = tx.Memos ?? []
     for (const wrapper of memos) {
       const memo = wrapper.Memo
       if (!memo?.MemoType || hexToUtf8(memo.MemoType) !== 'mint-period') continue
       const period = memo.MemoData ? hexToUtf8(memo.MemoData) : ''
-      const amount = tx.Amount as { value?: string } | undefined
+      const amount = tx.Amount
       records.push({
         period,
-        amountRaw: amount?.value ?? '0',
-        hash: (tx as { hash?: string }).hash ?? (entry as { hash?: string }).hash,
+        amountRaw: typeof amount === 'string' ? '0' : amount.value,
+        hash: tx.hash,
       })
     }
   }

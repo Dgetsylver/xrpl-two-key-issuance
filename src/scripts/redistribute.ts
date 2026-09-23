@@ -1,12 +1,12 @@
+import { isValidClassicAddress } from 'xrpl'
 import { connectClient } from '../lib/client.js'
-import { submitMultisigned } from '../lib/multisig.js'
-import { assertTesSuccess } from '../lib/txResult.js'
+import { localSigners, submitMultisigned } from '../lib/multisig.js'
 import { buildMptPaymentTx } from '../lib/mpt.js'
 import { loadDeploymentState, requireGovernance, requireMptIssuanceId } from '../lib/config.js'
 
 function parseArgs(argv: string[]): { destination: string; amount: string } {
   const [destination, amount] = argv
-  if (!destination || !destination.startsWith('r')) {
+  if (!destination || !isValidClassicAddress(destination)) {
     throw new Error('Usage: npm run redistribute -- <destinationAddress> <amount>')
   }
   if (!amount || !/^\d+$/.test(amount)) {
@@ -28,8 +28,7 @@ async function main(): Promise<void> {
     console.log(`Sending ${amount} unit(s) from governance (${governance.address}) to ${destination}...`)
 
     const paymentTx = buildMptPaymentTx(governance.address, destination, mptIssuanceId, amount)
-    const result = await submitMultisigned(client, paymentTx, governance.signers.slice(0, governance.quorum))
-    assertTesSuccess(result, 'redistribute Payment')
+    const result = await submitMultisigned(client, paymentTx, localSigners(governance.signers, governance.quorum))
     console.log(`Redistribution succeeded (tx hash: ${result.result.hash}).`)
   } finally {
     await client.disconnect()

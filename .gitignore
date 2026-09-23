@@ -6,3 +6,6 @@ dist/
 *.log
 .DS_Store
 web/.astro/
+
+# Pinned, reproducibly built aha SDK (see prototype.json).
+.prototype/

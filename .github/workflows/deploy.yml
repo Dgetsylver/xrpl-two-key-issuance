@@ -32,6 +32,8 @@ jobs:
       # `web/src/lib/tx.ts` imports `../../../src/lib/mpt.js`, which resolves
       # its own `xrpl` import from the *root* node_modules -- so the root
       # install is required for the web build, not just the web install.
+      - run: npm run prototype:setup
+
       - run: npm ci
 
       - run: npm ci

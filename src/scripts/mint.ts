@@ -1,6 +1,5 @@
 import { connectClient } from '../lib/client.js'
-import { submitMultisigned } from '../lib/multisig.js'
-import { assertTesSuccess } from '../lib/txResult.js'
+import { localSigners, submitMultisigned } from '../lib/multisig.js'
 import { buildMptPaymentTx } from '../lib/mpt.js'
 import { loadDeploymentState, requireGovernance, requireIssuer, requireMptIssuanceId, saveDeploymentState } from '../lib/config.js'
 
@@ -43,8 +42,7 @@ async function main(): Promise<void> {
       type: MEMO_TYPE,
       data: period,
     })
-    const result = await submitMultisigned(client, paymentTx, issuer.signers.slice(0, issuer.quorum))
-    assertTesSuccess(result, 'mint Payment')
+    const result = await submitMultisigned(client, paymentTx, localSigners(issuer.signers, issuer.quorum))
     console.log(`Mint succeeded (tx hash: ${result.result.hash}).`)
 
     const mintedPeriods = [...(state.mintedPeriods ?? [])]

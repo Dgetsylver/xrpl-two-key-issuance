@@ -1,14 +1,13 @@
 import type { Client } from 'xrpl'
+import { readMptHolding } from '../lib/ledger.js'
 import { connectClient } from '../lib/client.js'
 import { loadDeploymentState, type AccountState } from '../lib/config.js'
 
 async function printAccountStatus(client: Client, label: string, account: AccountState, mptIssuanceId?: string): Promise<void> {
   console.log(`\n${label}: ${account.address}`)
 
-  const signerLists = await client.request({ command: 'account_objects', account: account.address, type: 'signer_list' })
-  const signerList = signerLists.result.account_objects[0] as
-    | { SignerQuorum?: number; SignerEntries?: Array<{ SignerEntry: { Account: string } }> }
-    | undefined
+  const signerLists = await client.command.accountObjects({ account: account.address, type: 'signer_list' })
+  const signerList = signerLists.result.account_objects[0]
   if (signerList) {
     const entries = (signerList.SignerEntries ?? []).map((e) => e.SignerEntry.Account)
     console.log(`  SignerList: quorum ${signerList.SignerQuorum} of [${entries.join(', ')}]`)
@@ -16,16 +15,13 @@ async function printAccountStatus(client: Client, label: string, account: Accoun
     console.log('  SignerList: none configured')
   }
 
-  const accountInfo = await client.request({ command: 'account_info', account: account.address })
+  const accountInfo = await client.command.accountInfo({ account: account.address })
   const masterKeyDisabled = accountInfo.result.account_flags?.disableMasterKey ?? false
   console.log(`  Master key disabled: ${masterKeyDisabled}`)
 
   if (mptIssuanceId) {
-    const mptObjects = await client.request({ command: 'account_objects', account: account.address, type: 'mptoken' })
-    const mptoken = mptObjects.result.account_objects.find(
-      (o) => (o as { MPTokenIssuanceID?: string }).MPTokenIssuanceID === mptIssuanceId,
-    ) as { MPTAmount?: string } | undefined
-    console.log(`  MPT balance: ${mptoken?.MPTAmount ?? '(not authorized / no balance)'}`)
+    const mptoken = await readMptHolding(client, account.address, mptIssuanceId)
+    console.log(`  MPT balance: ${mptoken ? (mptoken.MPTAmount ?? '0') : '(not authorized)'}`)
   }
 }
 
@@ -36,12 +32,8 @@ async function main(): Promise<void> {
     console.log(`Connected to ${network.name} (${network.wsUrl}).`)
 
     if (state.mptIssuanceId) {
-      const issuance = await client.request({ command: 'ledger_entry', mpt_issuance: state.mptIssuanceId })
-      const node = issuance.result.node as {
-        OutstandingAmount?: string
-        Flags?: number
-        MaximumAmount?: string
-      }
+      const issuance = await client.command.ledgerEntry({ mpt_issuance: state.mptIssuanceId })
+      const node = issuance.result.node
       console.log(`\nMPTokenIssuance: ${state.mptIssuanceId}`)
       console.log(`  Outstanding amount: ${node.OutstandingAmount}`)
       console.log(`  Flags: ${node.Flags}`)

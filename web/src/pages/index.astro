@@ -158,7 +158,7 @@ import { withBase } from '../lib/paths'
       button.disabled = true
       try {
         const tx = buildMptAuthorizeTx(connectedAddress!, mptIssuanceId)
-        const result = await ghostsigSign({ payload: tx as unknown as Record<string, unknown>, address: connectedAddress!, submit: true })
+        const result = await ghostsigSign({ payload: { ...tx }, address: connectedAddress!, submit: true })
         statusMessage(authorizeArea, 'success', `Authorized! (tx <a href="${TESTNET_EXPLORER_BASE}/transactions/${result.hash}" target="_blank" rel="noopener noreferrer">${result.hash}</a>)`)
         sendCard.style.display = 'block'
         await refreshStats(mptIssuanceId)
@@ -200,8 +200,18 @@ import { withBase } from '../lib/paths'
       proposeMintCta.style.display = isIssuerSigner(config, address) ? 'inline-block' : 'none'
       proposeDisbursementCta.style.display = isGovernanceSigner(config, address) ? 'inline-block' : 'none'
       if (config.mptIssuanceId) {
-        await ensureAuthorized(config.mptIssuanceId)
-        await refreshStats(config.mptIssuanceId)
+        try {
+          await ensureAuthorized(config.mptIssuanceId)
+          await refreshStats(config.mptIssuanceId)
+          pageError.textContent = ''
+        } catch {
+          // A failed read cannot tell us whether the account can send or authorize.
+          sendCard.style.display = 'none'
+          authorizeArea.style.display = 'none'
+          document.getElementById('stat-balance')!.textContent = 'unavailable'
+          document.getElementById('stat-xrp')!.textContent = 'unavailable'
+          pageError.textContent = 'Could not read your account from Testnet. Reconnect to try again.'
+        }
       }
     })
 
@@ -237,7 +247,7 @@ import { withBase } from '../lib/paths'
         const tx = buildMptPaymentTx(connectedAddress, destination, config.mptIssuanceId, amountRaw)
         const submitButton = sendForm.querySelector('button[type="submit"]') as HTMLButtonElement
         submitButton.disabled = true
-        const result = await ghostsigSign({ payload: tx as unknown as Record<string, unknown>, address: connectedAddress, submit: true })
+        const result = await ghostsigSign({ payload: { ...tx }, address: connectedAddress, submit: true })
         statusMessage(sendResult, 'success', `Sent! (tx <a href="${TESTNET_EXPLORER_BASE}/transactions/${result.hash}" target="_blank" rel="noopener noreferrer">${result.hash}</a>)`)
         submitButton.disabled = false
         await refreshStats(config.mptIssuanceId)

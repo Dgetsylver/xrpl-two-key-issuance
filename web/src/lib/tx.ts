@@ -29,10 +29,10 @@ export async function buildProposalPaymentTx(
   quorum: number,
   memo?: MemoInput,
 ): Promise<Record<string, unknown>> {
-  const tx = buildMptPaymentTx(fromAddress, toAddress, mptIssuanceId, valueRaw, memo) as unknown as Record<string, unknown>
+  const tx = buildMptPaymentTx(fromAddress, toAddress, mptIssuanceId, valueRaw, memo)
   tx.SigningPubKey = ''
   const [fee, sequence] = await Promise.all([computeMultisigFeeDrops(quorum), getAccountSequence(fromAddress)])
   tx.Fee = fee
   tx.Sequence = sequence
-  return tx
+  return { ...tx }
 }

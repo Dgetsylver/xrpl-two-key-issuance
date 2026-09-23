@@ -1,28 +1,19 @@
 import {
-  MPTokenIssuanceCreateFlags,
   MPTokenIssuanceSetFlags,
   type Clawback,
   type MPTokenAuthorize,
-  type MPTokenIssuanceCreate,
   type MPTokenIssuanceSet,
   type Payment,
 } from 'xrpl'
 
-/**
- * Builds the (unsigned) MPTokenIssuanceCreate transaction for this project's
- * token: transferable, lockable, and clawback-able; no supply cap; whole
- * units only (AssetScale omitted).
- */
-export function buildMptIssuanceCreateTx(issuerAddress: string, metadataHex: string): MPTokenIssuanceCreate {
-  return {
-    TransactionType: 'MPTokenIssuanceCreate',
-    Account: issuerAddress,
-    MPTokenMetadata: metadataHex,
-    Flags:
-      MPTokenIssuanceCreateFlags.tfMPTCanTransfer |
-      MPTokenIssuanceCreateFlags.tfMPTCanLock |
-      MPTokenIssuanceCreateFlags.tfMPTCanClawback,
-  }
+// Address-only drafts are the external-wallet/multisig boundary. WalletClient's
+// .tx factories require a local Wallet; do not invent a private key for GhostSig.
+
+/** Shared policy, usable with client.tx.mpTokenIssuanceCreate. */
+export const MPT_ISSUANCE_FLAGS = {
+  tfMPTCanTransfer: true,
+  tfMPTCanLock: true,
+  tfMPTCanClawback: true,
 }
 
 export function buildMptAuthorizeTx(holderAddress: string, mptIssuanceId: string): MPTokenAuthorize {
