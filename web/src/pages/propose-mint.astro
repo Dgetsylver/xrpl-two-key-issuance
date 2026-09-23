@@ -50,6 +50,8 @@ import Layout from '../layouts/Layout.astro'
 
   <section id="quorum" class="panel panel-success" hidden></section>
 
+  <section id="not-completed" class="panel panel-alert" hidden></section>
+
   <section id="history" class="stack-tight" style="gap:0" hidden>
     <h2 class="section-title" style="margin:8px 0 10px">Past dealing days</h2>
     <div id="history-rows"></div>
@@ -75,7 +77,8 @@ import Layout from '../layouts/Layout.astro'
   import { esc, formatDate } from '../lib/format'
   import { numberWord, seatOn, seatsOf, signerRole } from '../lib/role'
   import { formatUnits, parseUnits } from '../lib/units'
-  import { chipsHtml, contractNoteHtml, nonSignerHtml, renderHandoff, sentenceHtml } from '../lib/ui'
+  import { chipsHtml, contractNoteHtml, nonSignerHtml, problemPanelHtml, renderHandoff, sentenceHtml } from '../lib/ui'
+  import type { ProblemStatus } from '../lib/outcome'
   import { withBase } from '../lib/paths'
 
   const $ = (id: string) => document.getElementById(id)!
@@ -219,6 +222,20 @@ import Layout from '../layouts/Layout.astro'
       panel.hidden = false
     }
 
+    /** The proposal settled without going through: drop the stale handoff card and say why. */
+    function showNotCompleted(status: ProblemStatus, sentence: string) {
+      stopWatching?.()
+      $('handoff').hidden = true
+      const panel = $('not-completed')
+      panel.innerHTML = problemPanelHtml(status, sentence, '<button type="button" class="btn btn-primary" data-restart>Start a new proposal</button>')
+      panel.hidden = false
+      panel.querySelector('[data-restart]')?.addEventListener('click', () => {
+        panel.hidden = true
+        proposed = false
+        $('propose').hidden = !connectedAddress || !seatOn(config, 'register', connectedAddress)
+      })
+    }
+
     proposeButton.addEventListener('click', async () => {
       if (!connectedAddress) return
       pageError.textContent = ''
@@ -260,13 +277,9 @@ import Layout from '../layouts/Layout.astro'
           shareUrl: outcome.shareUrl,
         })
         if (typeof tx.Sequence === 'number') {
-          stopWatching = watchProposal(issuer.address, tx.Sequence, mptIssuanceId, (status) => {
-            if (status.status === 'done') {
-              void showQuorum(day, preview.doneSentence, status.hash)
-            } else {
-              pageError.textContent =
-                "Another transaction used this proposal's sequence, so it can no longer be submitted. Check the register ledger, then propose again if needed."
-            }
+          stopWatching = watchProposal(tx, (status) => {
+            if (status.status === 'done') void showQuorum(day, preview.doneSentence, status.hash)
+            else showNotCompleted(status, preview.sentence)
           })
         }
       } catch (err) {

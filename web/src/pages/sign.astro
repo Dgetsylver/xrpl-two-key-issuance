@@ -77,6 +77,8 @@ import Layout from '../layouts/Layout.astro'
 
   <section id="submitted" class="panel panel-success" hidden></section>
 
+  <section id="not-completed" class="panel panel-alert" hidden></section>
+
   <section id="declined" class="card" hidden>
     <p class="result-sentence">Declined. Nothing was signed.</p>
     <p class="body-2">Tell the proposer and the other keyholders. The proposal can't go through without enough signatures.</p>
@@ -95,7 +97,8 @@ import Layout from '../layouts/Layout.astro'
   import { brand } from '../brand'
   import { esc, shortAddress } from '../lib/format'
   import { ROLE_WITH_ARTICLE, keySetAccount, seatOn, seatsOf, signerRole } from '../lib/role'
-  import { chipsHtml, contractNoteHtml, keyMeterHtml, renderHandoff, sentenceHtml } from '../lib/ui'
+  import { chipsHtml, contractNoteHtml, keyMeterHtml, problemPanelHtml, renderHandoff, sentenceHtml } from '../lib/ui'
+  import type { ProblemStatus } from '../lib/outcome'
   import { withBase } from '../lib/paths'
 
   const $ = (id: string) => document.getElementById(id)!
@@ -105,7 +108,7 @@ import Layout from '../layouts/Layout.astro'
 
   for (const link of document.querySelectorAll<HTMLAnchorElement>('[data-home]')) link.href = withBase('/')
 
-  const SECTIONS = ['open-card', 'disconnected-card', 'wrong-key-card', 'preview', 'handoff', 'submitted', 'declined'] as const
+  const SECTIONS = ['open-card', 'disconnected-card', 'wrong-key-card', 'preview', 'handoff', 'submitted', 'not-completed', 'declined'] as const
   function show(...ids: Array<(typeof SECTIONS)[number]>) {
     for (const id of SECTIONS) $(id).hidden = !ids.includes(id)
   }
@@ -223,14 +226,12 @@ import Layout from '../layouts/Layout.astro'
       render()
     }
 
-    function showSubmitted(proposal: ProposalPreview, quorum: number, hash: string | undefined, state: 'submitted' | 'confirmed' | 'superseded') {
+    function showSubmitted(proposal: ProposalPreview, quorum: number, hash: string | undefined, state: 'submitted' | 'confirmed') {
       settled = true
       const text =
         state === 'confirmed'
           ? "Confirmed on the XRPL testnet. It's now in the public register ledger."
-          : state === 'superseded'
-            ? "It didn't go through: another transaction used its sequence. Check the register ledger."
-            : 'Submitted to the XRPL testnet. Waiting for it to validate…'
+          : 'Submitted to the XRPL testnet. Waiting for it to validate…'
       const panel = $('submitted')
       panel.innerHTML = `
         <span class="panel-label">${quorum} of ${quorum} keys · Submitted</span>
@@ -243,13 +244,23 @@ import Layout from '../layouts/Layout.astro'
       show('submitted')
     }
 
+    /** Failed on the ledger, superseded or unreadable: an alert panel, never the success panel or the past-tense line. */
+    function showNotCompleted(proposal: ProposalPreview, status: ProblemStatus) {
+      settled = true
+      $('not-completed').innerHTML = problemPanelHtml(
+        status,
+        proposal.sentence,
+        `<a class="btn btn-primary" href="${esc(withBase('/'))}">Fund overview</a>`,
+      )
+      show('not-completed')
+    }
+
     function watch(proposal: ProposalPreview, quorum: number, fallbackHash?: string) {
-      const sequence = tx?.Sequence
-      if (typeof sequence !== 'number') return
+      if (!tx || typeof tx.Sequence !== 'number') return
       stopWatching?.()
-      stopWatching = watchProposal(proposal.account, sequence, mptIssuanceId, (status) => {
+      stopWatching = watchProposal(tx, (status) => {
         if (status.status === 'done') showSubmitted(proposal, quorum, status.hash ?? fallbackHash, 'confirmed')
-        else showSubmitted(proposal, quorum, fallbackHash, 'superseded')
+        else showNotCompleted(proposal, status)
       })
     }
 

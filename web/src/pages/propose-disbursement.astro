@@ -45,6 +45,8 @@ import Layout from '../layouts/Layout.astro'
   <section id="handoff" hidden></section>
 
   <section id="delivered" class="panel panel-success" hidden></section>
+
+  <section id="not-completed" class="panel panel-alert" hidden></section>
 </Layout>
 
 <script>
@@ -67,7 +69,8 @@ import Layout from '../layouts/Layout.astro'
   import { esc, formatShortDate, shortAddress } from '../lib/format'
   import { seatOn, seatsOf, signerRole } from '../lib/role'
   import { formatUnits, parseUnits } from '../lib/units'
-  import { nonSignerHtml, renderHandoff, sentenceHtml } from '../lib/ui'
+  import { nonSignerHtml, problemPanelHtml, renderHandoff, sentenceHtml } from '../lib/ui'
+  import type { ProblemStatus } from '../lib/outcome'
 
   const $ = (id: string) => document.getElementById(id)!
   const pageError = $('page-error')
@@ -184,6 +187,22 @@ import Layout from '../layouts/Layout.astro'
       })
     }
 
+    /** The proposal settled without going through: drop the stale handoff card and say why. */
+    function showNotCompleted(status: ProblemStatus, sentence: string) {
+      stopWatching?.()
+      $('handoff').hidden = true
+      void refreshInventory()
+      const panel = $('not-completed')
+      panel.innerHTML = problemPanelHtml(status, sentence, '<button type="button" class="btn btn-primary" data-restart>Start a new delivery</button>')
+      panel.hidden = false
+      panel.querySelector('[data-restart]')?.addEventListener('click', () => {
+        panel.hidden = true
+        inFlight = false
+        warning.innerHTML = ''
+        form.hidden = !connectedAddress || !seatOn(config, 'desk', connectedAddress)
+      })
+    }
+
     form.addEventListener('submit', async (event) => {
       event.preventDefault()
       if (!connectedAddress) return
@@ -214,7 +233,8 @@ import Layout from '../layouts/Layout.astro'
         const outcome = await signCeremonyPayload(tx, address)
         if (outcome.status === 'error') throw new Error(outcome.message)
         inFlight = true
-        deliveries = [{ destination, amountRaw, memos: [{ type: 'order-ref', data: orderRef }] }, ...deliveries]
+        const pending: MptPayment = { destination, amountRaw, memos: [{ type: 'order-ref', data: orderRef }] }
+        deliveries = [pending, ...deliveries]
         if (outcome.status === 'submitted') {
           await showDelivered(preview.doneSentence)
           return
@@ -231,12 +251,12 @@ import Layout from '../layouts/Layout.astro'
           shareUrl: outcome.shareUrl,
         })
         if (typeof tx.Sequence === 'number') {
-          stopWatching = watchProposal(governance.address, tx.Sequence, mptIssuanceId, (status) => {
-            if (status.status === 'done') {
-              void showDelivered(preview.doneSentence)
-            } else {
-              pageError.textContent =
-                "Another transaction used this proposal's sequence, so it can no longer be submitted. Check the register ledger, then propose again if needed."
+          stopWatching = watchProposal(tx, (status) => {
+            if (status.status === 'done') void showDelivered(preview.doneSentence)
+            else {
+              // It never delivered, so its order reference is free again.
+              deliveries = deliveries.filter((payment) => payment !== pending)
+              showNotCompleted(status, preview.sentence)
             }
           })
         }

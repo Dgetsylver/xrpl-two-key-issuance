@@ -209,22 +209,108 @@ export function suggestNextMintPeriod(history: MintRecord[], now: Date = new Dat
 
 export type ProposalStatus =
   | { status: 'pending' }
+  /** This proposal is on the ledger and succeeded. */
   | { status: 'done'; hash?: string }
-  | { status: 'superseded' }
+  /** This proposal is on the ledger but failed (a `tec` result): its fee and sequence are spent and nothing moved. */
+  | { status: 'failed'; result: string; hash?: string }
+  /** A different transaction used the sequence, so this proposal can never be submitted. */
+  | { status: 'superseded'; hash?: string }
+  /** The sequence is used, but the transaction that used it isn't in the history this server holds. */
+  | { status: 'unknown' }
+
+/** The fields that identify a prepared multisig proposal. */
+export interface ProposalIdentity {
+  Account?: unknown
+  Sequence?: unknown
+  TransactionType?: unknown
+  Destination?: unknown
+  Amount?: unknown
+}
+
+export interface LandedTransaction {
+  tx: Record<string, unknown>
+  result: string
+  hash?: string
+}
+
+/** How many account_tx pages to read looking for a sequence before giving up. */
+const SEQUENCE_SEARCH_PAGES = 5
+
+/**
+ * The validated transaction `account` sent with `sequence`, successful or
+ * not (a `tec` result spends the sequence too), newest first. Stops once it
+ * reaches the account's older sequences.
+ */
+export async function findTransactionBySequence(account: string, sequence: number): Promise<LandedTransaction | undefined> {
+  const client = await getClient()
+  let marker: unknown
+  for (let page = 0; page < SEQUENCE_SEARCH_PAGES; page++) {
+    const { result } = await client.request({
+      command: 'account_tx',
+      account,
+      api_version: 1,
+      binary: false,
+      forward: false,
+      limit: 100,
+      marker,
+    })
+    for (const row of result.transactions) {
+      const tx = row.tx as Record<string, unknown> | undefined
+      if (!row.validated || !tx || tx.Account !== account || typeof tx.Sequence !== 'number') continue
+      if (tx.Sequence === sequence) {
+        const meta = row.meta as { TransactionResult?: unknown } | undefined
+        return {
+          tx,
+          result: typeof meta?.TransactionResult === 'string' ? meta.TransactionResult : 'unknown',
+          hash: typeof tx.hash === 'string' ? tx.hash : undefined,
+        }
+      }
+      // Newest first: a lower sequence (tickets use 0) means we've passed it.
+      if (tx.Sequence > 0 && tx.Sequence < sequence) return undefined
+    }
+    marker = result.marker
+    if (marker == null) return undefined
+  }
+  return undefined
+}
+
+function sameAmount(a: unknown, b: unknown): boolean {
+  if (typeof a === 'string' || typeof b === 'string') return a === b
+  const x = a as { mpt_issuance_id?: unknown; value?: unknown } | undefined
+  const y = b as { mpt_issuance_id?: unknown; value?: unknown } | undefined
+  return Boolean(x && y) && x!.mpt_issuance_id === y!.mpt_issuance_id && String(x!.value) === String(y!.value)
+}
+
+/** Whether a landed transaction is this proposal: same sender, sequence, type, destination and amount. */
+export function isSameProposal(landed: Record<string, unknown>, proposal: ProposalIdentity): boolean {
+  return (
+    landed.Account === proposal.Account &&
+    landed.Sequence === proposal.Sequence &&
+    landed.TransactionType === proposal.TransactionType &&
+    landed.Destination === proposal.Destination &&
+    sameAmount(landed.Amount, proposal.Amount)
+  )
+}
 
 /**
  * Checks a prepared multisig proposal: still `pending` while the account's
- * sequence hasn't moved past it, `done` once a successful payment with that
- * sequence is on the ledger, `superseded` if something else used the
- * sequence (the proposal can then never be submitted).
+ * sequence hasn't moved past it. Once it has, the transaction that used the
+ * sequence says what happened: `done` if it's this proposal and succeeded,
+ * `failed` (with the ledger's result code) if it's this proposal and failed,
+ * `superseded` if it's a different transaction.
  */
-export async function getProposalStatus(account: string, sequence: number, mptIssuanceId: string): Promise<ProposalStatus> {
+export async function getProposalStatus(proposal: ProposalIdentity): Promise<ProposalStatus> {
+  const account = String(proposal.Account ?? '')
+  const sequence = proposal.Sequence
+  if (!account || typeof sequence !== 'number') throw new Error('The proposal has no account or sequence.')
   const client = await getClient()
   const info = await client.command.accountInfo({ account, ledger_index: 'validated' })
   if (info.result.account_data.Sequence <= sequence) return { status: 'pending' }
-  const payments = await getOutgoingMptPayments(account, mptIssuanceId)
-  const match = payments.find((payment) => payment.sequence === sequence)
-  return match ? { status: 'done', hash: match.hash } : { status: 'superseded' }
+  const landed = await findTransactionBySequence(account, sequence)
+  if (!landed) return { status: 'unknown' }
+  if (!isSameProposal(landed.tx, proposal)) return { status: 'superseded', hash: landed.hash }
+  if (landed.result === 'tesSUCCESS') return { status: 'done', hash: landed.hash }
+  return { status: 'failed', result: landed.result, hash: landed.hash }
 }
 
 /**
@@ -233,9 +319,7 @@ export async function getProposalStatus(account: string, sequence: number, mptIs
  * Read failures are retried on the next tick. Returns a stop function.
  */
 export function watchProposal(
-  account: string,
-  sequence: number,
-  mptIssuanceId: string,
+  proposal: ProposalIdentity,
   onSettled: (status: Exclude<ProposalStatus, { status: 'pending' }>) => void,
   intervalMs = 5_000,
 ): () => void {
@@ -244,7 +328,7 @@ export function watchProposal(
   const tick = async () => {
     if (stopped) return
     try {
-      const status = await getProposalStatus(account, sequence, mptIssuanceId)
+      const status = await getProposalStatus(proposal)
       if (status.status !== 'pending' && !stopped) {
         stopped = true
         onSettled(status)

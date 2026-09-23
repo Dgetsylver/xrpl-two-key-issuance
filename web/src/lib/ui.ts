@@ -6,9 +6,11 @@ import QRCode from 'qrcode'
 import { brand, type KeySet } from '../brand'
 import { formatEuro, type ContractNote } from './dealing'
 import { esc } from './format'
+import { problemCopy, type ProblemStatus } from './outcome'
 import { ROLE_WITH_ARTICLE, waitingFor, type RoleKind, type Seat } from './role'
 import { formatUnits } from './units'
 import { withBase } from './paths'
+import { TESTNET_EXPLORER_BASE } from './xrplClient'
 
 /**
  * Escapes a plain-language sentence and keeps its references on one line:
@@ -139,4 +141,23 @@ export async function renderHandoff(container: HTMLElement, opts: HandoffOptions
   })
   const qr = container.querySelector<HTMLImageElement>('[data-qr]')!
   qr.src = await QRCode.toDataURL(opts.shareUrl, { margin: 1, width: 320, color: { dark: '#1F2A33', light: '#FBFAF7' } })
+}
+
+/**
+ * The inside of the `panel panel-alert` shown when a proposal settles
+ * without going through. It never shows the past-tense result line, because
+ * nothing happened; `proposal` is the present-tense sentence, for reference.
+ */
+export function problemPanelHtml(status: ProblemStatus, proposal: string, actionsHtml: string): string {
+  const copy = problemCopy(status)
+  const hash = status.status === 'unknown' ? undefined : status.hash
+  const explorer = hash
+    ? `<a class="btn btn-secondary" href="${esc(`${TESTNET_EXPLORER_BASE}/transactions/${hash}`)}" target="_blank" rel="noopener noreferrer">View on testnet explorer ↗</a>`
+    : ''
+  return `
+    <span class="panel-label">${esc(copy.label)}</span>
+    <p class="result-sentence">${esc(copy.headline)}</p>
+    <p class="body-2">${esc(copy.detail)}</p>
+    <p class="small-muted">The proposal was: ${sentenceHtml(proposal)}</p>
+    <div class="row-wrap">${actionsHtml}${explorer}</div>`
 }
