@@ -269,6 +269,24 @@ export async function bootstrapGovernance(
   const governance = client.withWallet(governanceWallet)
   const requireAuth = issuanceRequiresAuth(await readIssuance(client, params.mptIssuanceId))
 
+  // A governance account whose master key is already disabled can't sign its
+  // own MPTokenAuthorize, which happens when it was set up for an earlier
+  // issuance. Stop before anything is submitted, and say what's still open.
+  const holding = await fetchMPTokenOrUndefined(client, governance.address, params.mptIssuanceId, 'validated')
+  if (!holding && (await isMasterKeyDisabled(client, governance.address))) {
+    const issuerAddress = requireAuth ? params.issuerWallet?.address : undefined
+    const issuerKeyEnabled = issuerAddress !== undefined && !(await isMasterKeyDisabled(client, issuerAddress))
+    throw new Error(
+      `The governance account ${governance.address} holds no MPToken for ${params.mptIssuanceId}, and its master key is already disabled, ` +
+        "so bootstrap can't sign its MPTokenAuthorize. It was probably set up for an earlier issuance. " +
+        (issuerKeyEnabled
+          ? `The issuer's master key (${issuerAddress}) is still enabled: it's only disabled once the governance account is admitted. `
+          : '') +
+        'To recover, either delete the "governance" field from .deployment.json and rerun `npm run setup:governance` to set up a new governance account, ' +
+        'or submit an MPTokenAuthorize for this issuance from the governance multisig and then rerun `npm run setup:governance`.',
+    )
+  }
+
   if (await ensureSelfAuthorized(client, governance, params.mptIssuanceId)) {
     log('Governance account authorized to hold the MPT.')
   }

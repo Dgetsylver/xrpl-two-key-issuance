@@ -150,7 +150,10 @@ All state (generated addresses, signer seeds, the MPT issuance ID, the
 issuance's flags and `AssetScale` as read back from the ledger, and a record
 of which periods have already been minted) is persisted to
 `.deployment.json`, which is gitignored. Delete it (or specific fields
-within it) to redo a step from scratch.
+within it) to redo a step from scratch. Redoing the issuer means a new
+issuance, so delete the `governance` field along with `issuer`,
+`mptIssuanceId` and `issuance`: `setup:issuer` refuses to start while a
+governance account from an earlier issuance is recorded.
 
 Both setup scripts save progress after funding their accounts, and
 `setup:issuer` also saves once it has created the issuance. Each step checks
@@ -211,7 +214,8 @@ covers:
   admitted wallet, with a shared memo)
 - The setup scripts themselves, run as separate processes: the RequireAuth
   setup order, reruns that change nothing, resuming an interrupted issuer
-  setup, and the unchanged order with RequireAuth off
+  setup, refusing a governance account left from an earlier issuance, and
+  the unchanged order with RequireAuth off
 - Multisig-gated minting, including insufficient-signature, disabled-master-
   key, and unauthorized-destination failure cases
 - Governance setup and multisig redistribution

@@ -17,8 +17,21 @@ async function main(): Promise<void> {
         "RequireAuth is on, so the issuer's master key is still enabled. Run `npm run setup:governance`: it admits the governance account, then disables it.",
       )
     }
-    console.log('Delete .deployment.json (or its "issuer"/"mptIssuanceId"/"issuance" fields) to redo this from scratch.')
+    console.log(
+      'Delete .deployment.json (or its "issuer", "mptIssuanceId", "issuance" and "governance" fields) to redo this from scratch. ' +
+        'The governance account is set up for one issuance, so it has to be redone with the issuer.',
+    )
     return
+  }
+  if (state.governance && !state.mptIssuanceId) {
+    // The governance account was set up for an issuance that's no longer
+    // recorded. Its master key is disabled, so setup:governance couldn't
+    // authorize it for a new issuance, and with RequireAuth the new issuer's
+    // master key would then stay enabled.
+    throw new Error(
+      `.deployment.json has a governance account (${state.governance.address}) but no issuance: it was set up for an earlier one. ` +
+        'Delete its "governance" field too, then run `npm run setup:issuer` and `npm run setup:governance`.',
+    )
   }
 
   const issuanceConfig = readIssuanceConfig()
