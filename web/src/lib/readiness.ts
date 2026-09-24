@@ -13,21 +13,7 @@ export interface ReadinessContext {
   source: string
   /** The issuance requires admission (RequireAuth), so a holding alone isn't enough to receive units. */
   requireAuth?: boolean
-  /** Which locks are in place, when read after the SDK's lock check failed: it doesn't say which one. */
-  locks?: TransferLocks
 }
-
-export interface TransferLocks {
-  /** The whole class is locked: dealing is suspended. */
-  issuance: boolean
-  /** A stop-transfer on the sending holding. */
-  source: boolean
-  /** A stop-transfer on the receiving holding. */
-  destination: boolean
-}
-
-/** The SDK's lock check, which covers the issuance and both holdings in one sentence. */
-export const LOCKED_CHECK = 'The issuance or a holder is locked for this transfer.'
 
 export interface ReadinessNotice {
   /** A blocked check means the ledger would reject the transfer as things stand. */
@@ -65,18 +51,8 @@ function mapCheck(message: string, ctx: ReadinessContext): Mapped {
       return { label: 'No holding to send from', text: `${ctx.source} has no holding of these units.` }
     case 'Source has not been authorized by the issuer.':
       return { label: 'Not on the register', text: `${ctx.source} hasn't been admitted to the register, so it can't send units.` }
-    case LOCKED_CHECK: {
-      const locks = ctx.locks
-      const lines = [
-        locks?.issuance ? "Dealing is suspended, so units can't move between holders." : '',
-        locks?.source ? `${ctx.source} has a stop-transfer in place, so it can't send units to other holders until the Register releases it.` : '',
-        locks?.destination ? `${destination} has a stop-transfer in place, so it can't receive units from other holders until the Register releases it.` : '',
-      ].filter(Boolean)
-      if (!locks || lines.length === 0) {
-        return { label: 'Units are locked', text: "Units can't move right now: dealing is suspended, or a stop-transfer is in place on one of the holdings." }
-      }
-      return { label: locks.issuance ? 'Units are locked' : 'Stop-transfer in place', text: lines.join(' ') }
-    }
+    case 'The issuance or a holder is locked for this transfer.':
+      return { label: 'Units are locked', text: "Units can't move right now: dealing is suspended, or a stop-transfer is in place on one of the holdings." }
     case 'This issuance does not permit transfers between holders.':
       return { label: 'Transfers not allowed', text: "This issuance doesn't allow transfers between holders." }
     case 'The source has insufficient MPT balance.':

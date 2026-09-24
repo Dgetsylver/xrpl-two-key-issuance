@@ -156,12 +156,10 @@ export function admissionNotice(state: AdmissionState, holder: string, ticker: s
 
 export interface InvestorPick {
   address: string
-  /** Right-hand status: 'Admitted' or 'Awaiting admission' under RequireAuth, else the last delivery; 'Stop-transfer in place' for a stopped holding. */
+  /** Right-hand status: 'Admitted' or 'Awaiting admission' under RequireAuth, else the last delivery. */
   status: string
   pending: boolean
 }
-
-export const STOPPED_STATUS = 'Stop-transfer in place'
 
 export interface InvestorPicksInput {
   /** Desk deliveries, newest first. */
@@ -173,8 +171,6 @@ export interface InvestorPicksInput {
   /** Accounts never listed (the Register and the Desk). */
   exclude: string[]
   requireAuth: boolean
-  /** Listed accounts whose holding has a stop-transfer in place, read from the ledger. */
-  stopped?: ReadonlySet<string>
   now?: Date
 }
 
@@ -182,9 +178,7 @@ export interface InvestorPicksInput {
  * The Deliver units investor list: accounts on the register first (the
  * newest deliveries, then admissions), then accounts awaiting admission,
  * which the Desk can't deliver to yet. On an open issuance it's the Phase 1
- * list of past delivery destinations. A holding with a stop-transfer in
- * place (`stopped`) says so and goes after the others: the Desk can't
- * deliver to it either.
+ * list of past delivery destinations.
  */
 export function investorPicks(input: InvestorPicksInput, limits: { known: number; pending: number } = { known: 5, pending: 3 }): InvestorPick[] {
   const seen = new Set(input.exclude)
@@ -202,16 +196,11 @@ export function investorPicks(input: InvestorPicksInput, limits: { known: number
         : 'Delivered before'
     add(payment.destination, status)
   }
-  if (input.requireAuth) for (const admission of input.admissions) add(admission.holder, 'Admitted')
-  const stopped = input.stopped ?? new Set<string>()
-  const listed = [
-    ...known.filter((pick) => !stopped.has(pick.address)),
-    ...known.filter((pick) => stopped.has(pick.address)).map((pick) => ({ ...pick, status: STOPPED_STATUS })),
-  ]
-  if (!input.requireAuth) return listed
+  if (!input.requireAuth) return known
+  for (const admission of input.admissions) add(admission.holder, 'Admitted')
   const pending = input.pending
     .filter((request) => !seen.has(request.account))
     .slice(0, limits.pending)
     .map((request) => ({ address: request.account, status: 'Awaiting admission', pending: true }))
-  return [...listed, ...pending]
+  return [...known, ...pending]
 }

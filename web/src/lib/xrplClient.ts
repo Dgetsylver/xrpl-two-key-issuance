@@ -12,7 +12,7 @@ import {
 } from 'xrpl'
 import { admissionRequestsOf, admissionsOf, unadmittedRequests, type AdmissionRequest } from './admission'
 import { suggestNextDealingDay } from './dealing'
-import { describeReadiness, LOCKED_CHECK, type ReadinessNotice, type TransferLocks } from './readiness'
+import { describeReadiness, type ReadinessNotice } from './readiness'
 
 // GHOSTSIG only understands XRPL testnet/devnet/mainnet, so this demo is
 // pinned to the public Testnet -- the same network `XRPL_NETWORK=testnet`
@@ -78,19 +78,7 @@ export async function checkTransfer(
 ): Promise<ReadinessNotice | null> {
   const client = await getClient()
   const readiness = await client.getMptTransferReadiness({ account, destination, mptIssuanceId, amount: opts.amount })
-  // The SDK's lock check doesn't say which lock: read them, so the notice can name the stopped holding.
-  const locked = readiness.checks.some((check) => check.status !== 'pass' && check.message === LOCKED_CHECK)
-  const locks = locked ? await readTransferLocks(account, destination, mptIssuanceId).catch(() => undefined) : undefined
-  return describeReadiness(readiness, { destination, source: opts.source, requireAuth: opts.requireAuth, locks })
-}
-
-async function readTransferLocks(account: string, destination: string, mptIssuanceId: string): Promise<TransferLocks> {
-  const [issuance, source, target] = await Promise.all([
-    getIssuanceState(mptIssuanceId),
-    getMptHolding(account, mptIssuanceId),
-    getMptHolding(destination, mptIssuanceId),
-  ])
-  return { issuance: Boolean(issuance.flags.lsfMPTLocked), source: source.locked, destination: target.locked }
+  return describeReadiness(readiness, { destination, source: opts.source, requireAuth: opts.requireAuth })
 }
 
 /** Returns the account's XRP balance in drops, or `undefined` if it isn't funded/activated yet. */
