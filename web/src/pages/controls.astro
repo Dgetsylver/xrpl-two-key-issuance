@@ -278,7 +278,14 @@ import Layout from '../layouts/Layout.astro'
     // ---------- Stop-transfer ----------
 
     function renderPicks() {
-      const shown = holdings.filter((h) => h.hasHolding && (BigInt(h.balanceRaw) > 0n || h.locked)).slice(0, MAX_PICKS)
+      // A lost wallet whose replacement is complete is empty and stays stopped: it isn't a holding to act on.
+      const replaced = new Set(history.pairs.filter((pair) => pair.reissue).map((pair) => pair.clawback.holder))
+      const empty = (h: Holding) => BigInt(h.balanceRaw) === 0n
+      const shown = holdings
+        .filter((h) => h.hasHolding && (!empty(h) || h.locked) && !(empty(h) && replaced.has(h.address)))
+        // Holdings with units first, newest activity first; an emptied, stopped wallet after them.
+        .sort((a, b) => Number(empty(a)) - Number(empty(b)))
+        .slice(0, MAX_PICKS)
       $('picks').innerHTML = shown
         .map(
           (h) => `<label class="pick">
