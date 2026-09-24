@@ -85,7 +85,7 @@ export interface ProposalPreview {
   /** For a re-issue: the clawback on the register ledger it pairs with. */
   pairedClawback?: ControlAction
   amountRaw?: string
-  /** Every top-level field, for the record. */
+  /** Every top-level field, for the record. An unrecognised one also lists a missing Holder or Memos as `(none)`. */
   rawFields: Array<[string, string]>
 }
 
@@ -275,6 +275,17 @@ export function rawFieldsOf(tx: Record<string, unknown>): Array<[string, string]
     .map(([key, value]) => [key, rawValue(key, value)])
 }
 
+/** Transaction types where a missing `Holder` changes what they do: without one, an MPTokenIssuanceSet locks the whole class. */
+const HOLDER_TYPES = ['MPTokenIssuanceSet', 'MPTokenAuthorize', 'Clawback']
+
+/** The raw record of an unrecognised transaction, naming the fields it leaves out that decide what it does. */
+function unrecognisedFieldsOf(tx: Record<string, unknown>): Array<[string, string]> {
+  const absent: Array<[string, string]> = []
+  if (typeof tx.TransactionType === 'string' && HOLDER_TYPES.includes(tx.TransactionType) && tx.Holder === undefined) absent.push(['Holder', '(none)'])
+  if (tx.Memos === undefined) absent.push(['Memos', '(none)'])
+  return [...rawFieldsOf(tx), ...absent]
+}
+
 function unrecognised(tx: Record<string, unknown>): ProposalPreview {
   return {
     kind: 'unrecognised',
@@ -282,7 +293,7 @@ function unrecognised(tx: Record<string, unknown>): ProposalPreview {
     doneSentence: 'Submitted.',
     account: String(tx.Account ?? ''),
     destination: typeof tx.Destination === 'string' ? tx.Destination : undefined,
-    rawFields: rawFieldsOf(tx),
+    rawFields: unrecognisedFieldsOf(tx),
   }
 }
 
