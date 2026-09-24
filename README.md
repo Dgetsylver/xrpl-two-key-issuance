@@ -1,6 +1,6 @@
 # Harrowquay test dapp: quick guide
 
-**Try it:** https://dgetsylver.github.io/carbon-coin/ (XRPL **testnet** only; the fund is fictional and nothing here is an offer).
+**Try it:** https://dgetsylver.github.io/xrpl-two-key-issuance/ (XRPL **testnet** only; the fund is fictional and nothing here is an offer).
 
 This is a **preview fork**. The `preview` branch merges the open pull requests of [theahaco/carbon-coin](https://github.com/theahaco/carbon-coin), so the whole demo can be tried before they land upstream:
 

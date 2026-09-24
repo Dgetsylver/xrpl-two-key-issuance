@@ -43,7 +43,7 @@ jobs:
         working-directory: web
         env:
           SITE_URL: https://dgetsylver.github.io
-          BASE_PATH: /carbon-coin
+          BASE_PATH: /xrpl-two-key-issuance
 
       - uses: actions/upload-pages-artifact@v3
         with:
