@@ -7,6 +7,7 @@ import {
   reasonWithoutRef,
   reissuesOf,
   replacementMemo,
+  replacementOfClawback,
   replacementRefOf,
   suggestReplacementRef,
   unfinishedReplacements,
@@ -132,6 +133,21 @@ describe('reading controls from the issuance history', () => {
     expect(currentStop(controlActionsOf([stop(1), release(2)], REGISTER), LOST)).toBeUndefined()
     const { pairs } = pairReplacements(actions, [])
     expect(unfinishedReplacements(pairs).map((p) => [p.ref, p.stop?.ledgerIndex])).toEqual([['REPL-2026-001', 3]])
+  })
+
+  it('finds the replacement a landed clawback started by the clawback itself, not by a reference an earlier one shares', () => {
+    // REPL-2026-001 was already clawed back from OTHER and re-issued; a later clawback from LOST reuses the reference.
+    const earlier = { ...claw(1, '5000', 'REPL-2026-001 · lost key', OTHER), sequence: 40 }
+    const later = { ...claw(5, '9000', 'REPL-2026-001 · lost key'), sequence: 42 }
+    const actions = controlActionsOf([earlier, later], REGISTER)
+    const { pairs } = pairReplacements(actions, reissuesOf([pay(NEW, '5000', 2, [replacementMemo('REPL-2026-001')])], DESK))
+    expect(pairs.find((p) => p.ref === 'REPL-2026-001')?.clawback.holder).toBe(OTHER)
+    const mine = replacementOfClawback(pairs, { sequence: 42 })
+    expect(mine?.clawback).toMatchObject({ holder: LOST, amountRaw: '9000' })
+    expect(mine?.reissue).toBeUndefined()
+    expect(replacementOfClawback(pairs, { hash: 'T5' })?.clawback.holder).toBe(LOST)
+    expect(replacementOfClawback(pairs, { sequence: 41 })).toBeUndefined()
+    expect(replacementOfClawback(pairs, {})).toBeUndefined()
   })
 })
 

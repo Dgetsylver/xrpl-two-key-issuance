@@ -95,6 +95,7 @@ import Layout from '../layouts/Layout.astro'
     reasonMemo,
     reissuesOf,
     replacementMemo,
+    replacementOfClawback,
     suggestReplacementRef,
     unfinishedReplacements,
     LOST_KEY,
@@ -173,6 +174,11 @@ import Layout from '../layouts/Layout.astro'
     let canLock = true
     let canClawback = true
     let history: RegisterHistory = { transactions: [], actions: [], admissions: [], payments: [], pairs: [] }
+    /**
+     * Whether `history` has been read from the ledger at least once. Until it
+     * has, the next replacement reference isn't known, so no replacement starts.
+     */
+    let historyState: 'loading' | 'read' | 'failed' = 'loading'
     let deliveries: MptPayment[] = []
     let holdings: Holding[] = []
 
@@ -256,13 +262,13 @@ import Layout from '../layouts/Layout.astro'
           (pair) => `<div class="panel panel-alert" style="gap:8px">
             <span class="panel-label">Replacement in progress · ${esc(pair.ref)}</span>
             <span>${sentenceHtml(`${units(pair.clawback.amountRaw ?? '0')} were clawed back from ${shortAddress(pair.clawback.holder)}${pair.clawback.date ? ` on ${formatShortDate(pair.clawback.date)}` : ''}. They're out of issue until step 2 re-issues them to the new wallet.`)}</span>
-            <div><button type="button" class="btn btn-primary" data-continue="${esc(pair.ref)}">Continue to step 2</button></div>
+            <div><button type="button" class="btn btn-primary" data-continue="${esc(pair.clawback.hash ?? '')}">Continue to step 2</button></div>
           </div>`,
         )
         .join('')
       for (const button of container.querySelectorAll<HTMLButtonElement>('[data-continue]')) {
         button.addEventListener('click', () => {
-          const pair = unfinishedReplacements(history.pairs).find((p) => p.ref === button.dataset.continue)
+          const pair = unfinishedReplacements(history.pairs).find((p) => p.clawback.hash === button.dataset.continue)
           if (pair) void showReissue(pair)
         })
       }
@@ -386,23 +392,33 @@ import Layout from '../layouts/Layout.astro'
 
     // ---------- Stopped ----------
 
+    /** The holding the stopped panel shows, so a fresh read of the register ledger can redraw it. */
+    let stoppedHolding: Holding | undefined
+
     function showStopped(holding: Holding) {
       checkSeq++
+      stoppedHolding = holding
       showView('stopped')
       const stop = currentStop(history.actions, holding.address)
       const reason = stop?.reason
       const who = shortAddress(holding.address)
       const lostKey = reason ? reason.toLowerCase().includes(LOST_KEY) : false
-      const reasonLine = !reason
-        ? 'The register ledger this page read has no reason memo for this stop.'
-        : lostKey
-          ? `Reason: ${reason}. Release the stop if the holder finds their key, or replace the units to a new wallet.`
-          : `Reason: ${reason}. Release the stop when the matter is closed. If the holder has lost their key, replace the units to a new wallet.`
+      // The reason and the next replacement reference both come from the register ledger: no replacement starts before it's read.
+      const reasonLine =
+        historyState === 'loading'
+          ? 'Reading the register ledger for the reason and the next replacement reference…'
+          : historyState === 'failed'
+            ? 'The register ledger couldn’t be read, so this page can’t show the reason or the next replacement reference. Reload to try again.'
+            : !reason
+              ? 'The register ledger this page read has no reason memo for this stop.'
+              : lostKey
+                ? `Reason: ${reason}. Release the stop if the holder finds their key, or replace the units to a new wallet.`
+                : `Reason: ${reason}. Release the stop when the matter is closed. If the holder has lost their key, replace the units to a new wallet.`
       const unfinished = unfinishedReplacements(history.pairs).find((pair) => pair.clawback.holder === holding.address)
       const empty = BigInt(holding.balanceRaw) === 0n
       const replaceButton = unfinished
         ? `<button type="button" class="btn btn-primary" data-continue>Continue to step 2</button>`
-        : `<button type="button" class="btn btn-primary" data-replace${empty || !canClawback ? ' disabled' : ''}>Start lost-key replacement</button>`
+        : `<button type="button" class="btn btn-primary" data-replace${empty || !canClawback || historyState !== 'read' ? ' disabled' : ''}>Start lost-key replacement</button>`
       const panel = $('stopped')
       panel.innerHTML = `
         <span class="panel-label">Stop-transfer in place</span>
@@ -487,12 +503,21 @@ import Layout from '../layouts/Layout.astro'
       return `<div class="units-row"><span class="units-key">Units</span><span class="units-value">${esc(units(raw))}</span></div>`
     }
 
-    /** Step 1: claw the whole holding back from the stopped, lost wallet under a new `REPL-…` reference. */
-    function showClaw(holding: Holding) {
+    function nextReplacementRef(): string {
+      return suggestReplacementRef(history.transactions.map((tx) => tx.memos))
+    }
+
+    /**
+     * Step 1: claw the whole holding back from the stopped, lost wallet under
+     * a new `REPL-…` reference. `notice` explains a reference that changed
+     * since the page last showed one.
+     */
+    function showClaw(holding: Holding, notice?: string) {
       showView('replace')
-      const ref = suggestReplacementRef(history.transactions.map((tx) => tx.memos))
+      const ref = nextReplacementRef()
       $('stepper').innerHTML = stepperHtml(1)
       replaceForm.innerHTML = `
+        ${notice ? `<div class="status">${esc(notice)}</div>` : ''}
         <div class="stack-tight" style="gap:4px"><span class="label">From (old wallet)</span><span class="wallet-value">${esc(holding.address)}</span></div>
         ${unitsRow(holding.balanceRaw)}
         ${memoBlock(ref)}
@@ -520,6 +545,21 @@ import Layout from '../layouts/Layout.astro'
           pageError.textContent = 'The holding is empty: there’s nothing to claw back.'
           return
         }
+        // Re-read the register ledger: a replacement that landed since this step opened takes the reference shown.
+        const latest = await readHistory().catch(() => undefined)
+        if (!latest) {
+          pageError.textContent = 'Could not read the register ledger to confirm the replacement reference. Try again before signing.'
+          return
+        }
+        history = latest
+        historyState = 'read'
+        if (nextReplacementRef() !== ref) {
+          showClaw(
+            { address: holding.address, ...fresh },
+            `The register ledger has a newer replacement than when this step opened, so this one is ${nextReplacementRef()}. Check the memo, then sign.`,
+          )
+          return
+        }
         const tx = await buildClawbackTx(issuer.address, holding.address, mptIssuanceId, fresh.balanceRaw, issuer.quorum, replacementMemo(ref)).catch(
           (err: unknown) => {
             pageError.textContent = err instanceof Error ? err.message : String(err)
@@ -527,8 +567,9 @@ import Layout from '../layouts/Layout.astro'
           },
         )
         if (!tx) return
-        await runCeremony(tx, button, async () => {
-          const pair = await findPair(ref)
+        const sequence = typeof tx.Sequence === 'number' ? tx.Sequence : undefined
+        await runCeremony(tx, button, async (hash) => {
+          const pair = await findPair({ sequence, hash })
           showResult(undefined)
           if (pair) void showReissue(pair)
           else restart()
@@ -536,11 +577,11 @@ import Layout from '../layouts/Layout.astro'
       }
     }
 
-    /** The replacement `ref` once its clawback is on the ledger; a fresh read may lag the validation by a moment. */
-    async function findPair(ref: string): Promise<ReplacementPair | undefined> {
+    /** The replacement this clawback started, once it's on the ledger; a fresh read may lag the validation by a moment. */
+    async function findPair(clawback: { sequence?: number; hash?: string }): Promise<ReplacementPair | undefined> {
       for (let attempt = 0; attempt < 3; attempt++) {
         await refresh()
-        const pair = history.pairs.find((p) => p.ref === ref)
+        const pair = replacementOfClawback(history.pairs, clawback)
         if (pair) return pair
         await new Promise((resolve) => setTimeout(resolve, 3000))
       }
@@ -769,11 +810,18 @@ import Layout from '../layouts/Layout.astro'
 
     async function refresh() {
       const [historyRead, deskRead] = await Promise.allSettled([readHistory(), getOutgoingMptPayments(governance.address, mptIssuanceId)])
-      if (historyRead.status === 'fulfilled') history = historyRead.value
+      if (historyRead.status === 'fulfilled') {
+        history = historyRead.value
+        historyState = 'read'
+      } else if (historyState === 'loading') {
+        historyState = 'failed'
+      }
       if (deskRead.status === 'fulfilled') deliveries = [...deskRead.value].sort((a, b) => (b.ledgerIndex ?? 0) - (a.ledgerIndex ?? 0))
       holdings = await readHoldings(candidateHolders())
       renderPicks()
       renderUnfinished()
+      // The stopped panel's reason, replacement state and button depend on the history: redraw it if it's showing.
+      if (!$('stopped').hidden && stoppedHolding) showStopped(stoppedHolding)
       if (historyRead.status === 'rejected') {
         $('picks-note').textContent = 'The register ledger couldn’t be read right now. Enter the holder’s address.'
       }

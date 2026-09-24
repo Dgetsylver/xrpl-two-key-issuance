@@ -227,6 +227,19 @@ function stopBefore(actions: ControlAction[], clawback: ControlAction): ControlA
   return latest?.kind === 'stop' ? latest : undefined
 }
 
+/**
+ * The replacement a given clawback started: matched on the clawback itself
+ * (the Register's sequence, or its hash), never on the reference alone,
+ * which an earlier replacement may share.
+ */
+export function replacementOfClawback(pairs: ReplacementPair[], clawback: { sequence?: number; hash?: string }): ReplacementPair | undefined {
+  return pairs.find(
+    (pair) =>
+      (clawback.sequence !== undefined && pair.clawback.sequence === clawback.sequence) ||
+      (clawback.hash !== undefined && pair.clawback.hash === clawback.hash),
+  )
+}
+
 /** Replacements whose clawback is on the ledger but whose re-issue isn't yet, oldest first. */
 export function unfinishedReplacements(pairs: ReplacementPair[]): ReplacementPair[] {
   return pairs.filter((pair) => !pair.reissue)
