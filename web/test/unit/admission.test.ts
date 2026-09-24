@@ -184,4 +184,28 @@ describe('Deliver units investor list', () => {
       { address: OTHER, status: 'Last delivery 03 Sep', pending: false },
     ])
   })
+
+  it('marks a stopped holding and lists it after the others, instead of "Admitted"', () => {
+    const LOST = 'rwwCKTRApRm4pWeqGmsNtaKSoooNUxdMVt'
+    const input = {
+      deliveries: [delivery(LOST, 21), delivery(INVESTOR, 20)],
+      admissions: [admission(OTHER, 18)],
+      pending: [],
+      exclude: [REGISTER, DESK],
+      now,
+    }
+    expect(investorPicks({ ...input, requireAuth: true, stopped: new Set([LOST]) })).toEqual([
+      { address: INVESTOR, status: 'Admitted', pending: false },
+      { address: OTHER, status: 'Admitted', pending: false },
+      { address: LOST, status: 'Stop-transfer in place', pending: false },
+    ])
+    expect(investorPicks({ ...input, requireAuth: false, stopped: new Set([LOST]) })).toEqual([
+      { address: INVESTOR, status: 'Last delivery 20 Sep', pending: false },
+      { address: LOST, status: 'Stop-transfer in place', pending: false },
+    ])
+    // Marking changes no one's place on the list, only the status and order.
+    expect(investorPicks({ ...input, requireAuth: true }).map((pick) => pick.address).sort()).toEqual(
+      investorPicks({ ...input, requireAuth: true, stopped: new Set([LOST]) }).map((pick) => pick.address).sort(),
+    )
+  })
 })

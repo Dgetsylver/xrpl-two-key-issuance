@@ -60,6 +60,44 @@ describe('transfer readiness in plain copy', () => {
     expect(notice?.lines[0]).toMatch(/dealing is suspended, or a stop-transfer is in place/)
   })
 
+  it('names the stopped holding once the locks are read, and falls back to the generic line without them', () => {
+    const readiness = { status: 'blocked' as const, checks: [{ status: 'blocked' as const, message: 'The issuance or a holder is locked for this transfer.' }] }
+    const ctx = { destination: INVESTOR, source: 'The Dealing Desk' }
+    expect(describeReadiness(readiness, { ...ctx, locks: { issuance: false, source: false, destination: true } })).toEqual({
+      blocked: true,
+      label: 'Stop-transfer in place',
+      lines: ["rUTE43…ceaQ has a stop-transfer in place, so it can't receive units from other holders until the Register releases it."],
+    })
+    expect(describeReadiness(readiness, { ...ctx, locks: { issuance: false, source: true, destination: false } })?.lines).toEqual([
+      "The Dealing Desk has a stop-transfer in place, so it can't send units to other holders until the Register releases it.",
+    ])
+    expect(describeReadiness(readiness, { ...ctx, locks: { issuance: true, source: false, destination: false } })).toMatchObject({
+      label: 'Units are locked',
+      lines: ["Dealing is suspended, so units can't move between holders."],
+    })
+    // Nothing locked by the time of the read, or no read: the generic line.
+    expect(describeReadiness(readiness, { ...ctx, locks: { issuance: false, source: false, destination: false } })?.lines[0]).toMatch(/dealing is suspended, or a stop-transfer/)
+  })
+
+  it('reads the locks when the lock check fails, so a stopped destination is named', async () => {
+    const LSF_MPT_LOCKED = 0x00000001
+    vi.spyOn(Client.prototype, 'request').mockImplementation((async (req: Record<string, unknown>) => {
+      if (req.command === 'ledger') return { result: { ledger_index: 100 } }
+      if (req.command === 'ledger_entry' && req.mpt_issuance) {
+        return { result: { node: { Issuer: REGISTER, Flags: LSF_MPT_CAN_TRANSFER, OutstandingAmount: '2000000', MaximumAmount: '9223372036854775807' } } }
+      }
+      if (req.command === 'ledger_entry' && req.mptoken) {
+        const { account } = req.mptoken as { account: string }
+        if (account === DESK) return { result: { node: { Account: DESK, MPTAmount: '1000000', Flags: 0 } } }
+        if (account === INVESTOR) return { result: { node: { Account: INVESTOR, MPTAmount: '1000000', Flags: LSF_MPT_LOCKED } } }
+      }
+      throw new Error(`unexpected ${String(req.command)}`)
+    }) as never)
+    const notice = await checkTransfer(DESK, INVESTOR, ISSUANCE, { source: 'The Dealing Desk', amount: '1000' })
+    expect(notice).toMatchObject({ blocked: true, label: 'Stop-transfer in place' })
+    expect(notice?.lines).toEqual(["rUTE43…ceaQ has a stop-transfer in place, so it can't receive units from other holders until the Register releases it."])
+  })
+
   it("keeps an unknown result advisory and falls back to the SDK's words for unmapped checks", () => {
     const notice = describeReadiness(
       { status: 'unknown', checks: [{ status: 'pass', message: 'ok' }, { status: 'unknown', message: 'Something new.' }] },

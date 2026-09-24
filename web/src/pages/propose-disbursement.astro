@@ -133,9 +133,24 @@ import Layout from '../layouts/Layout.astro'
       return `${prefix}${String(used + 1).padStart(3, '0')}`
     }
 
-    /** Accounts on the register (or, on an open issuance, past delivery destinations), then those awaiting admission. */
-    function renderPicks() {
-      const known = investorPicks({ deliveries, admissions, pending: awaiting, exclude: [issuer.address, governance.address], requireAuth })
+    /**
+     * Accounts on the register (or, on an open issuance, past delivery
+     * destinations), then those awaiting admission. Each listed holding is
+     * read first, so a stopped one says so rather than "Admitted".
+     */
+    async function renderPicks() {
+      const input = { deliveries, admissions, pending: awaiting, exclude: [issuer.address, governance.address], requireAuth }
+      const listed = investorPicks(input)
+        .filter((pick) => !pick.pending)
+        .map((pick) => pick.address)
+      const read = await Promise.allSettled(listed.map((address) => getMptHolding(address, mptIssuanceId)))
+      const stopped = new Set(
+        listed.filter((_, i) => {
+          const result = read[i]
+          return result?.status === 'fulfilled' && result.value.locked
+        }),
+      )
+      const known = investorPicks({ ...input, stopped })
       $('picks').innerHTML = known
         .map(
           (pick) => `<label class="pick">
@@ -375,7 +390,7 @@ import Layout from '../layouts/Layout.astro'
     if (desk.status === 'fulfilled') {
       deliveries = [...desk.value].sort((a, b) => (b.ledgerIndex ?? 0) - (a.ledgerIndex ?? 0))
     }
-    renderPicks()
+    await renderPicks()
     if (!refInput.value || refInput.value === `ORD-${currentDealingDay()}-001`) refInput.value = suggestOrderRef()
   }
 
