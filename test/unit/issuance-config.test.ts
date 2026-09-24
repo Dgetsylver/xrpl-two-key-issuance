@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { Client, Wallet } from 'xrpl'
-import { issuanceCreateFields, readIssuanceConfig } from '../../src/lib/mpt.js'
+import { Client, Wallet, mptToUnits } from 'xrpl'
+import { MAX_TOKEN_ASSET_SCALE, issuanceCreateFields, readIssuanceConfig } from '../../src/lib/mpt.js'
 
 describe('issuance config', () => {
   it('defaults to the original open, whole-unit issuance', () => {
@@ -16,15 +16,20 @@ describe('issuance config', () => {
       requireAuth: true,
       assetScale: 3,
     })
-    expect(readIssuanceConfig({ MPT_REQUIRE_AUTH: '1', TOKEN_ASSET_SCALE: '19' })).toEqual({
+    expect(readIssuanceConfig({ MPT_REQUIRE_AUTH: '1', TOKEN_ASSET_SCALE: '18' })).toEqual({
       requireAuth: true,
-      assetScale: 19,
+      assetScale: 18,
     })
     expect(readIssuanceConfig({ MPT_REQUIRE_AUTH: 'FALSE' }).requireAuth).toBe(false)
   })
 
-  it.each(['-1', '20', '3.5', 'three', '0x3', '1e1'])('rejects TOKEN_ASSET_SCALE=%s', (value) => {
+  it.each(['-1', '19', '20', '3.5', 'three', '0x3', '1e1'])('rejects TOKEN_ASSET_SCALE=%s', (value) => {
     expect(() => readIssuanceConfig({ TOKEN_ASSET_SCALE: value })).toThrow(/TOKEN_ASSET_SCALE/)
+  })
+
+  it('caps AssetScale at the largest scale that still fits one whole unit', () => {
+    expect(mptToUnits('1', MAX_TOKEN_ASSET_SCALE)).toBe('1000000000000000000')
+    expect(() => mptToUnits('1', MAX_TOKEN_ASSET_SCALE + 1)).toThrow(/maximum MPT amount/)
   })
 
   it('rejects an unclear MPT_REQUIRE_AUTH', () => {

@@ -9,10 +9,11 @@ export const MPT_ISSUANCE_FLAGS = {
 
 /**
  * Largest useful `AssetScale`. The ledger field is a UInt8, but an MPT amount
- * is at most 2^63 - 1 (19 digits), so a larger scale could never show a whole
- * unit.
+ * is at most 2^63 - 1 (about 9.22 * 10^18 ledger units). At scale 18 one
+ * displayed unit is 10^18, so up to 9 whole units fit; at 19 or more, not
+ * even one does.
  */
-export const MAX_TOKEN_ASSET_SCALE = 19
+export const MAX_TOKEN_ASSET_SCALE = 18
 
 /** Issuance options that are fixed when the MPT is created (DynamicMPT is off). */
 export interface IssuanceConfig {

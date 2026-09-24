@@ -88,7 +88,7 @@ Two optional settings shape the issuance. They're read once, by
 | Variable | Default | Effect |
 |---|---|---|
 | `MPT_REQUIRE_AUTH` | `false` | `true` sets `tfMPTRequireAuth`: holders need the issuer's admission before they can receive units. Also changes the [setup order](#requireauth-setup-order). |
-| `TOKEN_ASSET_SCALE` | `0` | The issuance's `AssetScale`, a whole number from 0 to 19. One displayed unit is 10^scale on the ledger. |
+| `TOKEN_ASSET_SCALE` | `0` | The issuance's `AssetScale`, a whole number from 0 to 18. One displayed unit is 10^scale on the ledger. |
 
 ## Networks
 
