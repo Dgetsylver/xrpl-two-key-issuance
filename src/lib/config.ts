@@ -29,7 +29,9 @@ export interface AccountState {
 
 /** Issuance settings read back from the ledger after MPTokenIssuanceCreate. */
 export interface IssuanceState {
-  /** The MPTokenIssuance `Flags` (lsfMPT* bits). */
+  /** The MPTokenIssuance `Flags` (lsfMPT* bits) when read. All are fixed at
+   * creation except lsfMPTLocked, which the issuer multisig can change, so
+   * that bit is only a snapshot. */
   flags: number
   /** The MPTokenIssuance `AssetScale` (0 when the field is absent). */
   assetScale: number

@@ -93,6 +93,12 @@ describe('sync-public-config', () => {
     expect(publicConfig).toMatchObject({ assetScale: 0, flags: 98 })
   })
 
+  it('never publishes the lock bit, which can change after the snapshot', () => {
+    // lsfMPTLocked (0x01) on top of RequireAuth | CanLock | CanTransfer | CanClawback
+    const publicConfig = buildPublicConfig({ ...state, issuance: { flags: 103, assetScale: 3 } }, tokenConfig)
+    expect(publicConfig.flags).toBe(102)
+  })
+
   it('leaves assetScale and flags out for a state written before they were recorded', () => {
     const { issuance: _omitted, ...olderState } = state
     const serialized = JSON.stringify(buildPublicConfig(olderState, tokenConfig))

@@ -1,6 +1,7 @@
 import { writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { MPTokenIssuanceFlags } from 'xrpl'
 import { loadDeploymentState, type AccountState, type DeploymentState } from '../lib/config.js'
 import { readTokenMetadataConfig, type TokenMetadataConfig } from '../lib/metadata.js'
 
@@ -27,7 +28,12 @@ export interface PublicDeploymentConfig {
   mptIssuanceId?: string
   /** The issuance's AssetScale: one displayed unit is 10^assetScale ledger units. */
   assetScale?: number
-  /** The issuance's lsfMPT* flags (e.g. RequireAuth 0x04, CanLock 0x02, CanTransfer 0x20, CanClawback 0x40). */
+  /**
+   * The issuance's lsfMPT* flags that are fixed at creation (e.g. RequireAuth
+   * 0x04, CanLock 0x02, CanTransfer 0x20, CanClawback 0x40). lsfMPTLocked
+   * (0x01) is always cleared: the issuer multisig can lock and unlock the
+   * whole issuance at any time, so read the lock state from the ledger.
+   */
   flags?: number
   token: PublicTokenConfig
   issuer?: PublicAccountConfig
@@ -53,20 +59,29 @@ function toPublicToken(config: TokenMetadataConfig): PublicTokenConfig {
 }
 
 /**
+ * lsfMPTLocked is the one issuance flag that can change after creation (a
+ * global MPTokenIssuanceSet lock or unlock). `.deployment.json` only holds a
+ * snapshot from setup, so that bit is never published.
+ */
+function publishedIssuanceFlags(flags: number): number {
+  return flags & ~MPTokenIssuanceFlags.lsfMPTLocked
+}
+
+/**
  * Builds the non-secret subset of `.deployment.json` (plus token identity
  * from TOKEN_* env vars) that's safe to publish as a static asset for the
  * `web/` frontend. Every `seed` field -- issuer/governance master seeds and
  * per-signer seeds -- is deliberately omitted; only addresses are kept.
  * `assetScale` and `flags` come from the issuance settings that
- * `setup:issuer` read back from the ledger; they're left out when the state
- * has none recorded.
+ * `setup:issuer` read back from the ledger, with the lock bit cleared from
+ * `flags`; they're left out when the state has none recorded.
  */
 export function buildPublicConfig(state: DeploymentState, tokenConfig: TokenMetadataConfig): PublicDeploymentConfig {
   return {
     network: state.network,
     mptIssuanceId: state.mptIssuanceId,
     assetScale: state.issuance?.assetScale,
-    flags: state.issuance?.flags,
+    flags: state.issuance ? publishedIssuanceFlags(state.issuance.flags) : undefined,
     token: toPublicToken(tokenConfig),
     issuer: state.issuer ? toPublicAccount(state.issuer) : undefined,
     governance: state.governance ? toPublicAccount(state.governance) : undefined,
