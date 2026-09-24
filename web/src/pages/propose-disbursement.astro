@@ -66,13 +66,15 @@ import Layout from '../layouts/Layout.astro'
     getIssuanceState,
     getIssuanceTransactions,
     getMptHolding,
+    getMptHoldings,
     getOutgoingMptPayments,
     getPendingRequests,
     mintPeriodOf,
     watchProposal,
+    type MptHolding,
     type MptPayment,
   } from '../lib/xrplClient'
-  import { admissionsOf, investorPicks, type Admission, type AdmissionRequest } from '../lib/admission'
+  import { admissionsOf, investorPicks, listedAccounts, type Admission, type AdmissionRequest } from '../lib/admission'
   import { currentDealingDay, formatDealingDay, parseDealingMonth } from '../lib/dealing'
   import { orderRefOf } from '../lib/ledger'
   import { esc, shortAddress } from '../lib/format'
@@ -106,11 +108,15 @@ import Layout from '../layouts/Layout.astro'
     const mptIssuanceId = requireMptIssuanceId(config)
     const ticker = config.token.ticker
     const seats = seatsOf(config, 'desk')
+    /** Accounts never listed as investors. */
+    const exclude = [issuer.address, governance.address]
 
     let deliveries: MptPayment[] = []
     let admissions: Admission[] = []
     /** Accounts awaiting admission, which the Desk can't deliver to yet. */
     let awaiting: AdmissionRequest[] = []
+    /** The listed accounts' holdings as last read, so the list shows where each stands now (a stop-transfer, say). */
+    let holdings = new Map<string, MptHolding>()
     let dealingDay = currentDealingDay()
     /** Whether the issuance requires admission: the ledger's flags, else the published ones. Set before the first check. */
     let requireAuth = configRequiresAuth(config) ?? false
@@ -135,13 +141,13 @@ import Layout from '../layouts/Layout.astro'
 
     /** Accounts on the register (or, on an open issuance, past delivery destinations), then those awaiting admission. */
     function renderPicks() {
-      const known = investorPicks({ deliveries, admissions, pending: awaiting, exclude: [issuer.address, governance.address], requireAuth })
+      const known = investorPicks({ deliveries, admissions, pending: awaiting, exclude, requireAuth, holdings })
       $('picks').innerHTML = known
         .map(
           (pick) => `<label class="pick">
             <input type="radio" name="investor" value="${esc(pick.address)}" />
             <span class="pick-main"><span class="radio" aria-hidden="true"></span><span class="pick-addr" title="${esc(pick.address)}">${esc(shortAddress(pick.address))}</span></span>
-            <span class="pick-status">${esc(pick.status)}</span>
+            <span class="pick-status${pick.stopped ? ' is-stopped' : ''}">${esc(pick.status)}</span>
           </label>`,
         )
         .join('')
@@ -375,6 +381,7 @@ import Layout from '../layouts/Layout.astro'
     if (desk.status === 'fulfilled') {
       deliveries = [...desk.value].sort((a, b) => (b.ledgerIndex ?? 0) - (a.ledgerIndex ?? 0))
     }
+    holdings = await getMptHoldings(listedAccounts({ deliveries, admissions, exclude, requireAuth }), mptIssuanceId)
     renderPicks()
     if (!refInput.value || refInput.value === `ORD-${currentDealingDay()}-001`) refInput.value = suggestOrderRef()
   }

@@ -7,6 +7,7 @@ import {
   admittedOn,
   investorPicks,
   kycReferenceOf,
+  listedAccounts,
   suggestAdmissionRef,
   unadmittedRequests,
 } from '../../src/lib/admission'
@@ -164,9 +165,9 @@ describe('Deliver units investor list', () => {
       now,
     })
     expect(picks).toEqual([
-      { address: INVESTOR, status: 'Admitted', pending: false },
-      { address: OTHER, status: 'Admitted', pending: false },
-      { address: 'rwwCKTRApRm4pWeqGmsNtaKSoooNUxdMVt', status: 'Awaiting admission', pending: true },
+      { address: INVESTOR, status: 'Admitted', pending: false, stopped: false },
+      { address: OTHER, status: 'Admitted', pending: false, stopped: false },
+      { address: 'rwwCKTRApRm4pWeqGmsNtaKSoooNUxdMVt', status: 'Awaiting admission', pending: true, stopped: false },
     ])
   })
 
@@ -180,8 +181,72 @@ describe('Deliver units investor list', () => {
       now,
     })
     expect(picks).toEqual([
-      { address: INVESTOR, status: 'Last delivery 20 Sep', pending: false },
-      { address: OTHER, status: 'Last delivery 03 Sep', pending: false },
+      { address: INVESTOR, status: 'Last delivery 20 Sep', pending: false, stopped: false },
+      { address: OTHER, status: 'Last delivery 03 Sep', pending: false, stopped: false },
     ])
+  })
+
+  describe('read against the holdings on the ledger', () => {
+    const LOST = 'rEq5ZtThTKd3CtZ6vVotjM1G5JWYFoyHZS'
+    const LEFT = 'rab1fzQkLuEuBrDaWuktaFyjve22fye2Rf'
+    const REVOKED = 'rMBTDouAfSz2zHGFDhxLqTf35GtvaP5rsS'
+    const PENDING = 'rwwCKTRApRm4pWeqGmsNtaKSoooNUxdMVt'
+    const admitted = { hasHolding: true, admitted: true, locked: false }
+    const input = {
+      deliveries: [delivery(INVESTOR, 20), delivery(LOST, 14), delivery(LEFT, 12), delivery(REVOKED, 11)],
+      admissions: [admission(OTHER, 18), admission(INVESTOR, 10)],
+      pending: [request(PENDING, 21)],
+      exclude: [REGISTER, DESK],
+      now,
+    }
+
+    it('lists the accounts it reads: deliveries, then admissions under RequireAuth, at most five', () => {
+      expect(listedAccounts({ ...input, requireAuth: true })).toEqual([INVESTOR, LOST, LEFT, REVOKED, OTHER])
+      expect(listedAccounts({ ...input, requireAuth: true }, 2)).toEqual([INVESTOR, LOST])
+      expect(listedAccounts({ ...input, requireAuth: false })).toEqual([INVESTOR, LOST, LEFT, REVOKED])
+    })
+
+    it('marks a holding under a stop-transfer, drops one with no holding, and moves one no longer admitted to awaiting', () => {
+      const holdings = new Map([
+        [INVESTOR, admitted],
+        // A lost wallet: stopped, then emptied by a replacement. Still stopped, so still marked.
+        [LOST, { hasHolding: true, admitted: true, locked: true }],
+        [LEFT, { hasHolding: false, admitted: false, locked: false }],
+        [REVOKED, { hasHolding: true, admitted: false, locked: false }],
+        [OTHER, admitted],
+      ])
+      expect(investorPicks({ ...input, requireAuth: true, holdings })).toEqual([
+        { address: INVESTOR, status: 'Admitted', pending: false, stopped: false },
+        { address: LOST, status: 'Stop-transfer in place', pending: false, stopped: true },
+        { address: OTHER, status: 'Admitted', pending: false, stopped: false },
+        { address: PENDING, status: 'Awaiting admission', pending: true, stopped: false },
+        { address: REVOKED, status: 'Awaiting admission', pending: true, stopped: false },
+      ])
+    })
+
+    it("keeps the history's status for an account whose holding couldn't be read", () => {
+      const picks = investorPicks({ ...input, requireAuth: true, holdings: new Map([[LOST, { hasHolding: true, admitted: true, locked: true }]]) })
+      expect(picks.map((pick) => [pick.address, pick.status])).toEqual([
+        [INVESTOR, 'Admitted'],
+        [LOST, 'Stop-transfer in place'],
+        [LEFT, 'Admitted'],
+        [REVOKED, 'Admitted'],
+        [OTHER, 'Admitted'],
+        [PENDING, 'Awaiting admission'],
+      ])
+    })
+
+    it('marks a stop-transfer on an open issuance too, and keeps the rest of the Phase 1 list', () => {
+      const holdings = new Map([
+        [LOST, { hasHolding: true, admitted: false, locked: true }],
+        [LEFT, { hasHolding: false, admitted: false, locked: false }],
+      ])
+      expect(investorPicks({ ...input, requireAuth: false, holdings }).map((pick) => [pick.address, pick.status, pick.stopped])).toEqual([
+        [INVESTOR, 'Last delivery 20 Sep', false],
+        [LOST, 'Stop-transfer in place', true],
+        [LEFT, 'Last delivery 12 Sep', false],
+        [REVOKED, 'Last delivery 11 Sep', false],
+      ])
+    })
   })
 })

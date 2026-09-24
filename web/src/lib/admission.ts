@@ -1,6 +1,7 @@
 import type { TextMemo } from 'xrpl'
 import { formatShortDate, shortAddress } from './format'
 import type { ReadinessNotice } from './readiness'
+import { holderRole } from './role'
 import type { IssuanceTransaction, MptHolding, MptPayment } from './xrplClient'
 
 /**
@@ -154,11 +155,22 @@ export function admissionNotice(state: AdmissionState, holder: string, ticker: s
   }
 }
 
+/** What the Deliver list reads of a listed account's holding. */
+export type HoldingFlags = Pick<MptHolding, 'hasHolding' | 'admitted' | 'locked'>
+
+/** The Deliver list status of a holding under a stop-transfer, in the handoff's words for the `locked` role. */
+export const STOPPED_STATUS = 'Stop-transfer in place'
+
 export interface InvestorPick {
   address: string
-  /** Right-hand status: 'Admitted' or 'Awaiting admission' under RequireAuth, else the last delivery. */
+  /**
+   * Right-hand status: 'Admitted', 'Stop-transfer in place' or 'Awaiting
+   * admission' under RequireAuth, else the last delivery.
+   */
   status: string
   pending: boolean
+  /** A stop-transfer is in place on the holding, so the Desk can't deliver to it. */
+  stopped: boolean
 }
 
 export interface InvestorPicksInput {
@@ -171,36 +183,68 @@ export interface InvestorPicksInput {
   /** Accounts never listed (the Register and the Desk). */
   exclude: string[]
   requireAuth: boolean
+  /**
+   * The holdings of `listedAccounts`, read from the ledger. The history only
+   * says an account was delivered to or admitted; its holding says where it
+   * stands now. A stop-transfer shows as such. Under RequireAuth, an account
+   * no longer admitted moves to awaiting admission, and one with no holding
+   * left is dropped. An account whose read failed keeps its status from the
+   * history.
+   */
+  holdings?: ReadonlyMap<string, HoldingFlags>
   now?: Date
+}
+
+/**
+ * The accounts the Deliver list is drawn from, newest first: past delivery
+ * destinations then, under RequireAuth, admissions; at most `max`. Read
+ * their holdings and pass them to `investorPicks`.
+ */
+export function listedAccounts(input: Pick<InvestorPicksInput, 'deliveries' | 'admissions' | 'exclude' | 'requireAuth'>, max = 5): string[] {
+  const seen = new Set(input.exclude)
+  const accounts: string[] = []
+  const history = [...input.deliveries.map((payment) => payment.destination), ...(input.requireAuth ? input.admissions.map((a) => a.holder) : [])]
+  for (const address of history) {
+    if (accounts.length >= max) break
+    if (seen.has(address)) continue
+    seen.add(address)
+    accounts.push(address)
+  }
+  return accounts
 }
 
 /**
  * The Deliver units investor list: accounts on the register first (the
  * newest deliveries, then admissions), then accounts awaiting admission,
  * which the Desk can't deliver to yet. On an open issuance it's the Phase 1
- * list of past delivery destinations.
+ * list of past delivery destinations. Either way, a holding under a
+ * stop-transfer says so.
  */
 export function investorPicks(input: InvestorPicksInput, limits: { known: number; pending: number } = { known: 5, pending: 3 }): InvestorPick[] {
-  const seen = new Set(input.exclude)
   const known: InvestorPick[] = []
-  const add = (address: string, status: string) => {
-    if (seen.has(address) || known.length >= limits.known) return
-    seen.add(address)
-    known.push({ address, status, pending: false })
-  }
-  for (const payment of input.deliveries) {
-    const status = input.requireAuth
-      ? 'Admitted'
-      : payment.date
-        ? `Last delivery ${formatShortDate(payment.date, input.now)}`
-        : 'Delivered before'
-    add(payment.destination, status)
+  /** Listed accounts whose holding shows no admission now (revoked): they wait like a request. */
+  const unadmitted: string[] = []
+  for (const address of listedAccounts(input, limits.known)) {
+    const holding = input.holdings?.get(address)
+    if (holding && input.requireAuth && !holding.hasHolding) continue
+    const role = holding ? holderRole(holding, input.requireAuth) : 'investor'
+    if (role === 'pending') unadmitted.push(address)
+    else if (role === 'locked') known.push({ address, status: STOPPED_STATUS, pending: false, stopped: true })
+    else known.push({ address, status: input.requireAuth ? 'Admitted' : deliveredStatus(input, address), pending: false, stopped: false })
   }
   if (!input.requireAuth) return known
-  for (const admission of input.admissions) add(admission.holder, 'Admitted')
-  const pending = input.pending
-    .filter((request) => !seen.has(request.account))
-    .slice(0, limits.pending)
-    .map((request) => ({ address: request.account, status: 'Awaiting admission', pending: true }))
+  const listed = new Set([...input.exclude, ...known.map((pick) => pick.address)])
+  const pending: InvestorPick[] = []
+  for (const address of [...input.pending.map((request) => request.account), ...unadmitted]) {
+    if (pending.length >= limits.pending || listed.has(address)) continue
+    listed.add(address)
+    pending.push({ address, status: 'Awaiting admission', pending: true, stopped: false })
+  }
   return [...known, ...pending]
+}
+
+/** Phase 1's status for a past delivery destination: the date of its newest delivery. */
+function deliveredStatus(input: Pick<InvestorPicksInput, 'deliveries' | 'now'>, address: string): string {
+  const date = input.deliveries.find((payment) => payment.destination === address)?.date
+  return date ? `Last delivery ${formatShortDate(date, input.now)}` : 'Delivered before'
 }

@@ -297,6 +297,16 @@ export async function getPendingRequests(
   })
 }
 
+/** Each account's holding, read in parallel. An account whose read fails is left out of the map. */
+export async function getMptHoldings(addresses: string[], mptIssuanceId: string): Promise<Map<string, MptHolding>> {
+  const reads = await Promise.allSettled(addresses.map((address) => getMptHolding(address, mptIssuanceId)))
+  const holdings = new Map<string, MptHolding>()
+  reads.forEach((read, i) => {
+    if (read.status === 'fulfilled') holdings.set(addresses[i]!, read.value)
+  })
+  return holdings
+}
+
 /** The dealing-day label an issue carries (memo type `mint-period`), if any. */
 export function mintPeriodOf(memos: TextMemo[]): string | undefined {
   return memos.find((memo) => memo.type === 'mint-period' && memo.data)?.data

@@ -771,6 +771,12 @@ textarea.input {
   text-align: right;
 }
 
+/* A holding under a stop-transfer: the alert colour, as on the locked role. */
+.pick .pick-status.is-stopped {
+  color: var(--brand-alert);
+  font-weight: 500;
+}
+
 /* ---------- Admission request ---------- */
 
 .card-subtitle {
