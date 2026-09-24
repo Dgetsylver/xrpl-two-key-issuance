@@ -2,6 +2,7 @@ import {
   Client,
   RippledError,
   decodeMemo,
+  fetchMPTokenIssuanceOrUndefined,
   fetchMPTokenOrUndefined,
   parseAccountRootFlags,
   parseMPTokenFlags,
@@ -12,7 +13,7 @@ import {
 } from 'xrpl'
 import { admissionRequestsOf, admissionsOf, unadmittedRequests, type AdmissionRequest } from './admission'
 import { suggestNextDealingDay } from './dealing'
-import { describeReadiness, type ReadinessNotice } from './readiness'
+import { LOCK_CHECK, describeReadiness, type LockSides, type ReadinessNotice } from './readiness'
 
 // GHOSTSIG only understands XRPL testnet/devnet/mainnet, so this demo is
 // pinned to the public Testnet -- the same network `XRPL_NETWORK=testnet`
@@ -78,7 +79,25 @@ export async function checkTransfer(
 ): Promise<ReadinessNotice | null> {
   const client = await getClient()
   const readiness = await client.getMptTransferReadiness({ account, destination, mptIssuanceId, amount: opts.amount })
-  return describeReadiness(readiness, { destination, source: opts.source, requireAuth: opts.requireAuth })
+  // The SDK's lock check doesn't say what's locked. Read it at the same ledger; if that fails, the copy names both possibilities.
+  const locks = readiness.checks.some((check) => check.message === LOCK_CHECK && check.status !== 'pass')
+    ? await readLocks(client, account, destination, mptIssuanceId, readiness.ledgerIndex).catch(() => undefined)
+    : undefined
+  return describeReadiness(readiness, { destination, source: opts.source, requireAuth: opts.requireAuth, locks })
+}
+
+/** Which of the issuance and the two holdings carry lsfMPTLocked at `ledgerIndex`. */
+async function readLocks(client: Client, account: string, destination: string, mptIssuanceId: string, ledgerIndex: number): Promise<LockSides> {
+  const [issuance, source, target] = await Promise.all([
+    fetchMPTokenIssuanceOrUndefined(client, mptIssuanceId, ledgerIndex),
+    fetchMPTokenOrUndefined(client, account, mptIssuanceId, ledgerIndex),
+    fetchMPTokenOrUndefined(client, destination, mptIssuanceId, ledgerIndex),
+  ])
+  return {
+    issuance: Boolean(issuance && parseMPTokenIssuanceFlags(issuance.Flags).lsfMPTLocked),
+    source: Boolean(source && parseMPTokenFlags(source.Flags).lsfMPTLocked),
+    destination: Boolean(target && parseMPTokenFlags(target.Flags).lsfMPTLocked),
+  }
 }
 
 /** Returns the account's XRP balance in drops, or `undefined` if it isn't funded/activated yet. */

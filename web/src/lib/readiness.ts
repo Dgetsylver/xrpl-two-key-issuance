@@ -13,7 +13,22 @@ export interface ReadinessContext {
   source: string
   /** The issuance requires admission (RequireAuth), so a holding alone isn't enough to receive units. */
   requireAuth?: boolean
+  /**
+   * What carries the lock when the lock check fails, read at the check's
+   * ledger: the issuance (dealing suspended) or a holding (a stop-transfer).
+   * Without it, the lock line names both possibilities.
+   */
+  locks?: LockSides
 }
+
+export interface LockSides {
+  issuance: boolean
+  source: boolean
+  destination: boolean
+}
+
+/** The SDK's lock check: the issuance, the source's holding or the destination's holding carries lsfMPTLocked. */
+export const LOCK_CHECK = 'The issuance or a holder is locked for this transfer.'
 
 export interface ReadinessNotice {
   /** A blocked check means the ledger would reject the transfer as things stand. */
@@ -51,8 +66,8 @@ function mapCheck(message: string, ctx: ReadinessContext): Mapped {
       return { label: 'No holding to send from', text: `${ctx.source} has no holding of these units.` }
     case 'Source has not been authorized by the issuer.':
       return { label: 'Not on the register', text: `${ctx.source} hasn't been admitted to the register, so it can't send units.` }
-    case 'The issuance or a holder is locked for this transfer.':
-      return { label: 'Units are locked', text: "Units can't move right now: dealing is suspended, or a stop-transfer is in place on one of the holdings." }
+    case LOCK_CHECK:
+      return lockCheck(ctx)
     case 'This issuance does not permit transfers between holders.':
       return { label: 'Transfers not allowed', text: "This issuance doesn't allow transfers between holders." }
     case 'The source has insufficient MPT balance.':
@@ -71,6 +86,24 @@ function mapCheck(message: string, ctx: ReadinessContext): Mapped {
       }
       return { label: 'Check the destination', text: message }
   }
+}
+
+/**
+ * The lock check, naming what's locked when the page could read it: a
+ * suspended class, or a stop-transfer on one of the two holdings.
+ */
+function lockCheck(ctx: ReadinessContext): Mapped {
+  const locks = ctx.locks
+  const lines: string[] = []
+  if (locks?.issuance) lines.push("The Register has suspended dealing for the class. Units can't move until it lifts the suspension.")
+  if (locks?.source) lines.push(`${ctx.source} has a stop-transfer in place, so it can't send units until the Register releases it.`)
+  if (locks?.destination) {
+    lines.push(`${shortAddress(ctx.destination)} has a stop-transfer in place, so it can't receive units until the Register releases it.`)
+  }
+  if (lines.length === 0) {
+    return { label: 'Units are locked', text: "Units can't move right now: dealing is suspended, or a stop-transfer is in place on one of the holdings." }
+  }
+  return { label: locks?.issuance ? 'Dealing suspended' : 'Stop-transfer in place', text: lines.join(' ') }
 }
 
 /** Null when every check passed; otherwise the label of the first failing check and one line per failing check. */
