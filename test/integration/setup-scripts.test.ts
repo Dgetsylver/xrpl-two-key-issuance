@@ -6,11 +6,20 @@ import { fileURLToPath } from 'node:url'
 import { promisify } from 'node:util'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Client, MPTokenFlags, fetchMPTokenIssuance, fetchMPTokenOrUndefined } from 'xrpl'
-import { isHolderAdmitted, isMasterKeyDisabled } from '../../src/lib/bootstrap.js'
-import type { DeploymentState } from '../../src/lib/config.js'
+import {
+  GOVERNANCE_ADMISSION_MEMO,
+  ensureAdmittedWithMasterKey,
+  ensureMasterKeyDisabled,
+  ensureSelfAuthorized,
+  isHolderAdmitted,
+  isMasterKeyDisabled,
+  masterWallet,
+} from '../../src/lib/bootstrap.js'
+import type { AccountState, DeploymentState } from '../../src/lib/config.js'
+import { fundNewWallet, fundSignerWallets } from '../../src/lib/fund.js'
 import { resolveNetwork, type NetworkConfig } from '../../src/lib/network.js'
 import { startLocalNetwork, type LocalNetworkHandle } from '../helpers/localNetwork.js'
-import { requireAuthEnv, setupGovernance, setupIssuer, testEnv } from '../helpers/fixtures.js'
+import { SIGNER_COUNT, SIGNER_QUORUM, requireAuthEnv, setupGovernance, setupIssuer, testEnv } from '../helpers/fixtures.js'
 
 const run = promisify(execFile)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
@@ -55,6 +64,16 @@ describe('setup scripts', () => {
   let netCfg: NetworkConfig
   let client: Client
   const dirs: string[] = []
+
+  /**
+   * What setup:governance saves right after funding: a governance account
+   * with `masterKeyDisablePending`, before any of its bootstrap steps.
+   */
+  async function fundedGovernance(): Promise<AccountState> {
+    const wallet = await fundNewWallet(client, netCfg)
+    const signers = await fundSignerWallets(client, netCfg, SIGNER_COUNT)
+    return { address: wallet.address, seed: wallet.seed!, signers, quorum: SIGNER_QUORUM, masterKeyDisablePending: true }
+  }
 
   function workDir(): string {
     const dir = mkdtempSync(path.join(tmpdir(), 'carbon-coin-setup-'))
@@ -126,6 +145,63 @@ describe('setup scripts', () => {
     expect(readState(cwd)).toEqual(complete)
   }, 180_000)
 
+  it('resumes a setup:governance run that stopped after the admission, and disables both master keys', async () => {
+    const cwd = workDir()
+    const env = requireAuthEnv(network.wsUrl)
+
+    await runScript('setup-issuer', cwd, env)
+    const afterIssuer = readState(cwd)
+    const mptIssuanceId = afterIssuer.mptIssuanceId!
+
+    // As if setup:governance had stopped right after the issuer's admission:
+    // both pending flags are still set, and both master keys still enabled.
+    const governance = await fundedGovernance()
+    writeState(cwd, { ...afterIssuer, governance })
+    await ensureSelfAuthorized(client, client.withWallet(masterWallet(governance)), mptIssuanceId)
+    await ensureAdmittedWithMasterKey(
+      client,
+      client.withWallet(masterWallet(afterIssuer.issuer!)),
+      mptIssuanceId,
+      governance.address,
+      GOVERNANCE_ADMISSION_MEMO,
+    )
+
+    const resumed = await runScript('setup-governance', cwd, env)
+    expect(resumed).toMatch(/resuming/)
+    expect(resumed).not.toMatch(/authorized to hold the MPT/)
+    expect(resumed).not.toMatch(/admitted the governance account/)
+    expect(resumed).toMatch(/Disabled the issuer's master key/)
+    expect(resumed).toMatch(/Configured the governance account's 2-of-3 multisig/)
+    expect(resumed).toMatch(/Disabled the governance account's master key/)
+
+    const done = readState(cwd)
+    expect(done.issuer?.masterKeyDisablePending).toBeUndefined()
+    expect(done.governance?.masterKeyDisablePending).toBeUndefined()
+    expect(await isMasterKeyDisabled(client, afterIssuer.issuer!.address)).toBe(true)
+    expect(await isMasterKeyDisabled(client, governance.address)).toBe(true)
+    expect(await isHolderAdmitted(client, governance.address, mptIssuanceId)).toBe(true)
+  }, 180_000)
+
+  it('stops when the issuer master key is already disabled but governance is not admitted', async () => {
+    const cwd = workDir()
+    const env = requireAuthEnv(network.wsUrl)
+
+    await runScript('setup-issuer', cwd, env)
+    const afterIssuer = readState(cwd)
+    const mptIssuanceId = afterIssuer.mptIssuanceId!
+    const governance = await fundedGovernance()
+    writeState(cwd, { ...afterIssuer, governance })
+    await ensureSelfAuthorized(client, client.withWallet(masterWallet(governance)), mptIssuanceId)
+    await ensureMasterKeyDisabled(client, client.withWallet(masterWallet(afterIssuer.issuer!)))
+
+    const output = await runScriptExpectingFailure('setup-governance', cwd, env)
+    expect(output).toMatch(/isn't admitted yet, and the issuer's master key is already disabled/)
+    expect(output).not.toMatch(/authorized to hold the MPT/)
+    expect(readState(cwd).governance?.masterKeyDisablePending).toBe(true)
+    expect(await isHolderAdmitted(client, governance.address, mptIssuanceId)).toBe(false)
+    expect(await isMasterKeyDisabled(client, governance.address)).toBe(false)
+  }, 180_000)
+
   it('refuses to pair a new issuance with a governance account set up for an earlier one', async () => {
     // A finished RequireAuth deployment: its governance account is admitted
     // for the first issuance and its master key is disabled.
@@ -180,6 +256,16 @@ describe('setup scripts', () => {
     expect(await isMasterKeyDisabled(client, afterIssuer.issuer!.address)).toBe(true)
     const node = await fetchMPTokenIssuance(client, afterIssuer.mptIssuanceId!, 'validated')
     expect(node.AssetScale).toBeUndefined()
+
+    // A state file from before `issuance` was recorded: a rerun reads it from
+    // the ledger and submits nothing.
+    const { issuance: _issuance, ...legacy } = afterIssuer
+    writeState(cwd, legacy)
+    const issuerSequence = await sequenceOf(client, afterIssuer.issuer!.address)
+    const migrated = await runScript('setup-issuer', cwd, env)
+    expect(migrated).toMatch(/resuming/)
+    expect(readState(cwd)).toEqual(afterIssuer)
+    expect(await sequenceOf(client, afterIssuer.issuer!.address)).toBe(issuerSequence)
 
     await runScript('setup-governance', cwd, env)
     const done = readState(cwd)

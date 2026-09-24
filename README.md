@@ -214,8 +214,11 @@ covers:
   admitted wallet, with a shared memo)
 - The setup scripts themselves, run as separate processes: the RequireAuth
   setup order, reruns that change nothing, resuming an interrupted issuer
-  setup, refusing a governance account left from an earlier issuance, and
-  the unchanged order with RequireAuth off
+  setup and a `setup:governance` run stopped after the admission, the error
+  when the issuer's master key is disabled before the admission, refusing a
+  governance account left from an earlier issuance, the unchanged order with
+  RequireAuth off, and a rerun on a state file written before `issuance`
+  was recorded
 - Multisig-gated minting, including insufficient-signature, disabled-master-
   key, and unauthorized-destination failure cases
 - Governance setup and multisig redistribution
