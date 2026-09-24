@@ -201,7 +201,7 @@ const seatChips = (keySet: 'register' | 'desk') => brand.seats[keySet]
     type MptPayment,
   } from '../lib/xrplClient'
   import { admissionsOf, admittedOn, type Admission } from '../lib/admission'
-  import { controlActionsOf, type ControlAction } from '../lib/controls'
+  import { controlActionsOf, stoppedHoldingNote, type ControlAction } from '../lib/controls'
   import { buildRegisterLedgerEntries, lastDeliveryLine, orderRefOf } from '../lib/ledger'
   import { currentDealingDay, formatDealingDay, formatEuro, illustrativeDealing, parseDealingMonth, suggestNextDealingDay } from '../lib/dealing'
   import { esc, formatDate, joinList } from '../lib/format'
@@ -327,6 +327,8 @@ const seatChips = (keySet: 'register' | 'desk') => brand.seats[keySet]
   let requireAuthRead: Promise<boolean> = Promise.resolve(false)
   /** The Register's admissions, newest first; resolves to [] if the history can't be read. */
   let admissionsRead: Promise<Admission[]> = Promise.resolve([])
+  /** The Register's stop-transfers, releases and clawbacks, newest first; resolves to [] if the history can't be read. */
+  let controlsRead: Promise<ControlAction[]> = Promise.resolve([])
   /** Guards against an older, slower render overwriting a newer one (e.g. a disconnect mid-read). */
   let renderSeq = 0
 
@@ -387,7 +389,7 @@ const seatChips = (keySet: 'register' | 'desk') => brand.seats[keySet]
         return
       }
       const holding = await getMptHolding(address, mptIssuanceId)
-      const [history, requireAuth, admissions] = await Promise.all([deliveries, requireAuthRead, admissionsRead])
+      const [history, requireAuth, admissions, controls] = await Promise.all([deliveries, requireAuthRead, admissionsRead, controlsRead])
       if (seq !== renderSeq) return
       const role = holderRole(holding, requireAuth)
       showRoleInHeader(role)
@@ -414,7 +416,7 @@ const seatChips = (keySet: 'register' | 'desk') => brand.seats[keySet]
         </div>
         ${
           holding.locked
-            ? `<div class="panel panel-alert"><span class="panel-label">Stop-transfer in place</span><span>Transfers paused on this holding while the register reviews it. Your units are safe.</span></div>`
+            ? `<div class="panel panel-alert"><span class="panel-label">Stop-transfer in place</span><span>${esc(stoppedHoldingNote(controls, address, ticker))}</span></div>`
             : `<p class="body-2">${esc(accountLine)}</p>`
         }`
       if (!holding.locked) appendTransfer(address, mptIssuanceId, ticker)
@@ -570,6 +572,10 @@ const seatChips = (keySet: 'register' | 'desk') => brand.seats[keySet]
     )
     admissionsRead = registerHistoryRead.then(
       (transactions) => admissionsOf(transactions, issuer.address),
+      () => [],
+    )
+    controlsRead = registerHistoryRead.then(
+      (transactions) => controlActionsOf(transactions, issuer.address),
       () => [],
     )
     onConnectionChange((address) => {

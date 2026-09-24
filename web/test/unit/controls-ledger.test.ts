@@ -9,6 +9,7 @@ import {
   replacementMemo,
   replacementOfClawback,
   replacementRefOf,
+  stoppedHoldingNote,
   suggestReplacementRef,
   unfinishedReplacements,
 } from '../../src/lib/controls'
@@ -133,6 +134,23 @@ describe('reading controls from the issuance history', () => {
     expect(currentStop(controlActionsOf([stop(1), release(2)], REGISTER), LOST)).toBeUndefined()
     const { pairs } = pairReplacements(actions, [])
     expect(unfinishedReplacements(pairs).map((p) => [p.ref, p.stop?.ledgerIndex])).toEqual([['REPL-2026-001', 3]])
+  })
+
+  it("tells a stopped holder what the Register did, and promises nothing about the units", () => {
+    const paused = 'Transfers paused on this holding while the register reviews it.'
+    expect(stoppedHoldingNote([], LOST, 'HQUAY')).toBe(paused)
+    expect(stoppedHoldingNote(controlActionsOf([stop(1, 'lost key')], REGISTER), LOST, 'HQUAY')).toBe(paused)
+    // After step 1 of a replacement the holding is empty and still stopped.
+    const replaced = controlActionsOf([stop(1, 'lost key'), claw(2, '12500', 'REPL-2026-004 · lost key')], REGISTER)
+    expect(stoppedHoldingNote(replaced, LOST, 'HQUAY')).toBe(
+      'The Register clawed back 12.500 HQUAY from this holding on 02 Aug 2026 for lost-key replacement REPL-2026-004. Transfers stay paused on it.',
+    )
+    expect(stoppedHoldingNote(controlActionsOf([stop(1), claw(2, '500')], REGISTER), LOST, 'HQUAY')).toBe(
+      'The Register clawed back 0.500 HQUAY from this holding on 02 Aug 2026. Transfers stay paused on it.',
+    )
+    // A clawback before the stop now in place, or from another holding, isn't this stop's.
+    expect(stoppedHoldingNote(controlActionsOf([stop(1), claw(2, '500'), release(3), stop(4)], REGISTER), LOST, 'HQUAY')).toBe(paused)
+    expect(stoppedHoldingNote(controlActionsOf([stop(1), claw(2, '500', undefined, OTHER)], REGISTER), LOST, 'HQUAY')).toBe(paused)
   })
 
   it('finds the replacement a landed clawback started by the clawback itself, not by a reference an earlier one shares', () => {

@@ -1,5 +1,5 @@
 import type { TextMemo } from 'xrpl'
-import { shortAddress } from './format'
+import { formatDate, shortAddress } from './format'
 import type { ReadinessNotice } from './readiness'
 import { formatUnits } from './units'
 import type { IssuanceTransaction, MptHolding } from './xrplClient'
@@ -249,6 +249,22 @@ export function unfinishedReplacements(pairs: ReplacementPair[]): ReplacementPai
 export function currentStop(actions: ControlAction[], holder: string): ControlAction | undefined {
   const latest = newestFirst(actions).find((a) => a.holder === holder && (a.kind === 'stop' || a.kind === 'release'))
   return latest?.kind === 'stop' ? latest : undefined
+}
+
+/**
+ * What a stopped holder's own account card says: that transfers are
+ * paused and, when the Register has clawed units back from the holding
+ * since the stop, what it took. It makes no promise about the units: the
+ * Register can claw them back.
+ */
+export function stoppedHoldingNote(actions: ControlAction[], holder: string, ticker: string): string {
+  const since = currentStop(actions, holder)?.ledgerIndex ?? 0
+  const clawback = newestFirst(actions).find((a) => a.kind === 'clawback' && a.holder === holder && (a.ledgerIndex ?? 0) >= since)
+  if (!clawback) return 'Transfers paused on this holding while the register reviews it.'
+  const took = `${formatUnits(clawback.amountRaw ?? '0')} ${ticker}`
+  const when = clawback.date ? ` on ${formatDate(clawback.date)}` : ''
+  const why = clawback.replRef ? ` for lost-key replacement ${clawback.replRef}` : ''
+  return `The Register clawed back ${took} from this holding${when}${why}. Transfers stay paused on it.`
 }
 
 /**
