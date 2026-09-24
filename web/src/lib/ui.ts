@@ -85,6 +85,10 @@ const NON_SIGNER_BODY: Record<KeySet, string> = {
 export const NON_SIGNER_ADMIT =
   'Admission is done by Register keyholders. They put an account on the register, relying on the KYC the Dealing Desk has already completed off-ledger.'
 
+/** The non-signer body for the Register controls page. */
+export const NON_SIGNER_CONTROLS =
+  'Stop-transfer and lost-key replacement are Register controls. Two of the three Register seats sign each one, with a reason memo.'
+
 /**
  * The card shown when a page needs a key the viewer doesn't hold: explains
  * the role, no error. `body` replaces the key set's default explanation.
