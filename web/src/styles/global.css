@@ -1291,6 +1291,10 @@ a.ledger-row:hover {
   --stamp: var(--role-desk);
 }
 
+.stamp.stop {
+  --stamp: var(--brand-alert);
+}
+
 .ledger-main {
   display: flex;
   flex-direction: column;
@@ -1318,6 +1322,31 @@ a.ledger-row:hover {
   font: 600 10.5px/1.2 var(--font-sans);
   letter-spacing: 0.1em;
   text-transform: uppercase;
+}
+
+/* A lost-key replacement: its stop, clawback and re-issue in one dashed box. */
+.ledger-group-item {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--brand-rule-2);
+}
+
+.ledger-group {
+  border: 1px dashed var(--brand-dashed);
+  background: var(--brand-surface);
+}
+
+.ledger-group-head {
+  padding: 8px 12px;
+  font: 500 12px var(--font-sans);
+  letter-spacing: 0.06em;
+  color: var(--brand-muted);
+  border-bottom: 1px dashed var(--brand-dashed);
+}
+
+.ledger-row.in-group {
+  padding: 10px 12px;
+  gap: 10px;
+  border-bottom: none;
 }
 
 .ledger-date {
