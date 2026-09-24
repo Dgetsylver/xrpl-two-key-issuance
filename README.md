@@ -52,7 +52,9 @@ records the findings that motivated this stack.
   is disabled one step later (see [RequireAuth setup order](#requireauth-setup-order)).
 - **Governance account** likewise self-authorizes to hold the MPT as a
   single-sig bootstrap action before its master key is disabled; from then
-  on it's a 2-of-3 multisig, independent of the issuer's signers.
+  on it's a 2-of-3 multisig with its own signer list. Keeping that list
+  separate from the issuer's is a matter of configuration: nothing checks
+  that the two lists don't share a signer.
 - Both 2-of-3 signer sets are **placeholders** for local/Testnet development
   — replace them with real keys before any production use.
 
@@ -150,9 +152,10 @@ of which periods have already been minted) is persisted to
 `.deployment.json`, which is gitignored. Delete it (or specific fields
 within it) to redo a step from scratch.
 
-Both setup scripts save progress after funding their accounts and after
-creating the issuance, and each step checks the ledger before it acts. If a
-run stops half-way, run the same command again to resume it.
+Both setup scripts save progress after funding their accounts, and
+`setup:issuer` also saves once it has created the issuance. Each step checks
+the ledger before it acts. If a run stops half-way, run the same command
+again to resume it.
 
 ### RequireAuth setup order
 
