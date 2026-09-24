@@ -1,3 +1,5 @@
+> **Preview fork, not the official deployment.** This branch (`preview`) merges the open pull requests of [theahaco/carbon-coin](https://github.com/theahaco/carbon-coin) (#10, #15, #12, #13, #16, #17, #18) so the Harrowquay demo can be tried end to end before they land upstream. It is published at https://dgetsylver.github.io/carbon-coin/ on the XRPL testnet. Everything here is fictional and testnet-only; nothing is an offer.
+
 # xrpl-token
 
 A simple fungible token on the XRP Ledger, built on the native **MPToken**
